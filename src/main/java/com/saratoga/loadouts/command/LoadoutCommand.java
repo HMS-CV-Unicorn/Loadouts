@@ -283,7 +283,7 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
 
     /**
      * /loadout syncwm
-     * Re-sync weapon list from WeaponMechanics
+     * Re-sync weapon and attachment list from WeaponMechanics
      */
     private void handleSyncWm(Player player) {
         if (!player.hasPermission("loadouts.admin")) {
@@ -291,13 +291,16 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        player.sendMessage(Component.text("WeaponMechanicsから武器リストを再取得中...", NamedTextColor.YELLOW));
+        player.sendMessage(Component.text("WeaponMechanicsから武器・アタッチメントリストを再取得中...", NamedTextColor.YELLOW));
 
-        // Re-scan weapons
+        // Re-scan weapons and attachments
         plugin.getWmIntegration().scanWeapons();
+        plugin.getWmIntegration().scanAttachments();
 
         int weaponCount = plugin.getWmIntegration().getTotalWeaponCount();
-        player.sendMessage(Component.text("武器リストを同期しました。" + weaponCount + "個の武器を読み込みました。",
+        int attachmentCount = plugin.getWmIntegration().getTotalAttachmentCount();
+
+        player.sendMessage(Component.text("同期完了: " + weaponCount + "個の武器、" + attachmentCount + "個のアタッチメント",
                 NamedTextColor.GREEN));
 
         // Log category breakdown

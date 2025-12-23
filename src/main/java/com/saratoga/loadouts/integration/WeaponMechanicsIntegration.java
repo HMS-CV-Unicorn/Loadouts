@@ -39,8 +39,15 @@ public class WeaponMechanicsIntegration {
     // Attachment ID -> Category mapping
     private final Map<String, String> attachmentCategories = new HashMap<>();
 
+    // Attachment ID -> Item data (Material, CustomModelData, Name)
+    private final Map<String, AttachmentItemData> attachmentItemData = new HashMap<>();
+
     // All attachment IDs
     private final List<String> allAttachments = new ArrayList<>();
+
+    // Data class for attachment item info
+    private record AttachmentItemData(String material, int customModelData, String displayName) {
+    }
 
     public WeaponMechanicsIntegration(Loadouts plugin) {
         this.plugin = plugin;
@@ -440,6 +447,7 @@ public class WeaponMechanicsIntegration {
     public void scanAttachments() {
         categorizedAttachments.clear();
         attachmentCategories.clear();
+        attachmentItemData.clear();
         allAttachments.clear();
 
         File wmDataFolder = WeaponMechanics.getInstance().getDataFolder();
@@ -512,8 +520,15 @@ public class WeaponMechanicsIntegration {
                 attachmentCategories.put(attachmentId, categoryName);
                 allAttachments.add(attachmentId);
 
+                // Cache item data for icon generation
+                String basePath = attachmentId + ".Item.";
+                String material = yaml.getString(basePath + "Type", "IRON_NUGGET");
+                int customModelData = yaml.getInt(basePath + "Custom_Model_Data", 0);
+                String displayName = yaml.getString(basePath + "Name", attachmentId);
+                attachmentItemData.put(attachmentId, new AttachmentItemData(material, customModelData, displayName));
+
                 plugin.getLogger().fine("Parsed attachment: " + attachmentId +
-                        " from " + ymlFile.getName() + " in category: " + categoryName);
+                        " from " + ymlFile.getName() + " (CMD: " + customModelData + ")");
             }
         } catch (Exception e) {
             plugin.getLogger()
@@ -551,23 +566,52 @@ public class WeaponMechanicsIntegration {
     }
 
     /**
-     * Generate attachment ItemStack using WMP API.
-     * Returns null if attachment doesn't exist or WMP is not available.
+     * Generate attachment ItemStack using WeaponMechanicsPlus API.
+     * Iterates through attachment configuration to find matching attachment by ID,
+     * then calls Attachment.generateItem() to get proper ItemStack.
      */
+    @SuppressWarnings("unchecked")
     public ItemStack generateAttachmentItem(String attachmentId) {
         try {
-            // Use WMP API to generate attachment
-            Class<?> wmpApiClass = Class.forName("me.cjcrafter.weaponmechanicsplus.WeaponMechanicsPlusAPI");
-            java.lang.reflect.Method generateMethod = wmpApiClass.getMethod("generateAttachment", String.class);
-            Object result = generateMethod.invoke(null, attachmentId);
-            if (result instanceof ItemStack) {
-                return (ItemStack) result;
+            // Get WeaponMechanicsPlus instance
+            Class<?> wmpClass = Class.forName("com.cjcrafter.weaponmechanicsplus.WeaponMechanicsPlus");
+            Object wmpInstance = wmpClass.getMethod("getInstance").invoke(null);
+
+            // Get attachment configuration (implements Iterable<Map.Entry<String, Object>>)
+            Object attachmentConfig = wmpClass.getMethod("getAttachmentConfiguration").invoke(wmpInstance);
+
+            // Configuration implements Iterable, so we can iterate through entries
+            // Each entry key is the attachment ID, value is the Attachment object
+            if (attachmentConfig instanceof Iterable<?> iterable) {
+                for (Object entryObj : iterable) {
+                    if (entryObj instanceof java.util.Map.Entry<?, ?> entry) {
+                        String key = (String) entry.getKey();
+                        Object value = entry.getValue();
+
+                        // Check if this is the attachment we're looking for
+                        if (attachmentId.equals(key) && value != null) {
+                            // Call Attachment.generateItem() to get proper ItemStack
+                            java.lang.reflect.Method generateItemMethod = value.getClass().getMethod("generateItem");
+                            Object result = generateItemMethod.invoke(value);
+
+                            if (result instanceof ItemStack itemStack) {
+                                plugin.getLogger().fine("Generated attachment via WMP API: " + attachmentId);
+                                return itemStack;
+                            }
+                        }
+                    }
+                }
             }
+
+            plugin.getLogger().warning("Attachment not found in WMP config: " + attachmentId);
         } catch (ClassNotFoundException e) {
-            plugin.getLogger().fine("WeaponMechanicsPlus not available for attachment generation");
+            plugin.getLogger().warning("WeaponMechanicsPlus not found. Cannot generate attachments.");
+        } catch (NoSuchMethodException e) {
+            plugin.getLogger().warning("WMP API method not found: " + e.getMessage());
         } catch (Exception e) {
-            plugin.getLogger().log(Level.WARNING, "Failed to generate attachment: " + attachmentId, e);
+            plugin.getLogger().log(Level.WARNING, "Failed to generate attachment via WMP API: " + attachmentId, e);
         }
+
         return null;
     }
 

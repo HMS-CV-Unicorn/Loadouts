@@ -189,7 +189,7 @@ public class GuiManager implements Listener {
                 LegacyComponentSerializer.legacyAmpersand()
                         .deserialize(title + " (スロット" + session.getEditingSlotNumber() + ")"));
 
-        // Layout slots in a nice grid
+        // Layout weapon slots in top rows (row 2 and row 4)
         Map<String, LoadoutsConfig.SlotConfig> slots = config.getSlots();
         int[] slotPositions = { 10, 12, 14, 16, 28, 30, 32, 34 };
 
@@ -204,6 +204,24 @@ public class GuiManager implements Listener {
             ItemStack icon = createSlotIcon(slotKey, slotConfig, session);
             inv.setItem(slotPositions[i], icon);
             i++;
+        }
+
+        // Add attachment slots on row 3 (positions 19-23), directly below primary
+        // weapon slots
+        Map<String, LoadoutsConfig.AttachmentSlotConfig> attachmentSlots = config.getAttachmentSlots();
+        int[] attachmentPositions = { 19, 20, 21, 22, 23 };
+
+        int j = 0;
+        for (Map.Entry<String, LoadoutsConfig.AttachmentSlotConfig> entry : attachmentSlots.entrySet()) {
+            if (j >= attachmentPositions.length)
+                break;
+
+            String slotKey = entry.getKey();
+            LoadoutsConfig.AttachmentSlotConfig slotConfig = entry.getValue();
+
+            ItemStack icon = createAttachmentSlotIcon(slotKey, slotConfig, session);
+            inv.setItem(attachmentPositions[j], icon);
+            j++;
         }
 
         // Confirm button at bottom center
@@ -335,6 +353,140 @@ public class GuiManager implements Listener {
         player.openInventory(inv);
         openGuis.put(player.getUniqueId(), GuiType.WEAPON_SELECT);
     }
+
+    // ==================== Attachment Selection Menu ====================
+
+    /**
+     * Open attachment selection menu for a slot
+     */
+    public void openAttachmentSelectMenu(Player player, String slotKey) {
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session == null) {
+            player.sendMessage(config.getMessageComponent("invalid-usage"));
+            return;
+        }
+
+        session.setCurrentAttachmentSlot(slotKey);
+        session.setCurrentPage(0);
+
+        updateAttachmentSelectMenu(player, session);
+    }
+
+    /**
+     * Update/refresh the attachment selection menu
+     */
+    private void updateAttachmentSelectMenu(Player player, LoadoutManager.LoadoutEditSession session) {
+        String slotKey = session.getCurrentAttachmentSlot();
+        int page = session.getCurrentPage();
+
+        // Get attachment slot config
+        LoadoutsConfig.AttachmentSlotConfig slotConfig = config.getAttachmentSlot(slotKey);
+        if (slotConfig == null) {
+            player.sendMessage(Component.text("不明なアタッチメントスロットです", NamedTextColor.RED));
+            return;
+        }
+
+        // Get attachments for this slot's categories
+        List<String> attachments = wmIntegration.getAttachmentsForCategories(slotConfig.categories());
+
+        plugin.getLogger().info("Attachment select for " + slotKey + ": " + attachments.size() + " attachments found");
+
+        int itemsPerPage = config.getItemsPerPage();
+        int maxPages = Math.max(1, (int) Math.ceil((double) attachments.size() / itemsPerPage));
+
+        String title = "&8&lアタッチメント選択 - " + slotConfig.displayName();
+        Inventory inv = Bukkit.createInventory(null, 54,
+                LegacyComponentSerializer.legacyAmpersand().deserialize(title));
+
+        if (attachments.isEmpty()) {
+            // No attachments message
+            ItemStack noItems = new ItemStack(Material.BARRIER);
+            ItemMeta meta = noItems.getItemMeta();
+            meta.displayName(Component.text("アタッチメントがありません", NamedTextColor.RED)
+                    .decoration(TextDecoration.ITALIC, false));
+            meta.lore(List.of(
+                    Component.text("このカテゴリにはアタッチメントがありません", NamedTextColor.GRAY)
+                            .decoration(TextDecoration.ITALIC, false)));
+            noItems.setItemMeta(meta);
+            inv.setItem(22, noItems);
+        } else {
+            // Calculate pagination
+            int startIndex = page * itemsPerPage;
+            int endIndex = Math.min(startIndex + itemsPerPage, attachments.size());
+
+            // Add attachment items
+            int slot = 0;
+            for (int i = startIndex; i < endIndex && slot < 45; i++) {
+                String attachmentId = attachments.get(i);
+                ItemStack attachmentItem = createAttachmentIcon(attachmentId, session);
+                if (attachmentItem != null) {
+                    inv.setItem(slot, attachmentItem);
+                    slot++;
+                }
+            }
+        }
+
+        // Navigation row (bottom)
+        // Back button
+        inv.setItem(45, createNavigationItem(Material.ARROW, "&7戻る"));
+
+        // Previous page
+        if (page > 0) {
+            inv.setItem(48, createNavigationItem(Material.ARROW, "&e← 前のページ"));
+        }
+
+        // Page indicator
+        int maxPagesDisplay = Math.max(1, (int) Math.ceil((double) attachments.size() / itemsPerPage));
+        inv.setItem(49, createPageIndicator(page + 1, maxPagesDisplay));
+
+        // Next page
+        if (page < maxPages - 1) {
+            inv.setItem(50, createNavigationItem(Material.ARROW, "&e次のページ →"));
+        }
+
+        // Fill remaining bottom row
+        for (int i = 45; i < 54; i++) {
+            if (inv.getItem(i) == null) {
+                inv.setItem(i, createFillerItem(Material.BLACK_STAINED_GLASS_PANE));
+            }
+        }
+
+        player.openInventory(inv);
+        openGuis.put(player.getUniqueId(), GuiType.ATTACHMENT_SELECT);
+    }
+
+    /**
+     * Create icon for an attachment in selection menu
+     */
+    private ItemStack createAttachmentIcon(String attachmentId, LoadoutManager.LoadoutEditSession session) {
+        // Try to generate actual attachment item
+        ItemStack item = wmIntegration.generateAttachmentItem(attachmentId);
+        if (item == null) {
+            item = new ItemStack(Material.IRON_NUGGET);
+        }
+
+        ItemMeta meta = item.getItemMeta();
+        List<Component> lore = meta.lore() != null ? new ArrayList<>(meta.lore()) : new ArrayList<>();
+
+        // Check if already selected for current slot
+        String currentSlot = session.getCurrentAttachmentSlot();
+        String selectedForSlot = session.getAttachment(currentSlot);
+
+        if (attachmentId.equals(selectedForSlot)) {
+            lore.add(Component.empty());
+            lore.add(Component.text("✓ 選択中", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+            meta.setEnchantmentGlintOverride(true);
+        } else {
+            lore.add(Component.empty());
+            lore.add(Component.text("クリックで選択", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        }
+
+        meta.lore(lore);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    // ==================== Item Granting ====================
 
     /**
      * Grant selected items to player with weapons and ammo.
@@ -506,6 +658,7 @@ public class GuiManager implements Listener {
             case SLOT_SELECT -> handleSlotSelectClick(player, event.getSlot(), clicked);
             case CATEGORY_MENU -> handleCategoryMenuClick(player, event.getSlot(), clicked);
             case WEAPON_SELECT -> handleWeaponSelectClick(player, event.getSlot(), clicked);
+            case ATTACHMENT_SELECT -> handleAttachmentSelectClick(player, event.getSlot(), clicked);
         }
     }
 
@@ -564,7 +717,7 @@ public class GuiManager implements Listener {
             return;
         }
 
-        // Check slot positions
+        // Check weapon slot positions
         int[] slotPositions = { 10, 12, 14, 16, 28, 30, 32, 34 };
         Map<String, LoadoutsConfig.SlotConfig> slots = config.getSlots();
 
@@ -575,6 +728,19 @@ public class GuiManager implements Listener {
                 return;
             }
             i++;
+        }
+
+        // Check attachment slot positions (row 3: 19-23)
+        int[] attachmentPositions = { 19, 20, 21, 22, 23 };
+        Map<String, LoadoutsConfig.AttachmentSlotConfig> attachmentSlots = config.getAttachmentSlots();
+
+        int j = 0;
+        for (String slotKey : attachmentSlots.keySet()) {
+            if (j < attachmentPositions.length && attachmentPositions[j] == slot) {
+                openAttachmentSelectMenu(player, slotKey);
+                return;
+            }
+            j++;
         }
     }
 
@@ -638,6 +804,65 @@ public class GuiManager implements Listener {
 
                     openCategoryMenu(player, session.getEditingSlotNumber());
                 }
+            }
+        }
+    }
+
+    private void handleAttachmentSelectClick(Player player, int slot, ItemStack clicked) {
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session == null)
+            return;
+
+        // Back button
+        if (slot == 45) {
+            openCategoryMenu(player, session.getEditingSlotNumber());
+            return;
+        }
+
+        // Previous page
+        if (slot == 48 && session.getCurrentPage() > 0) {
+            session.setCurrentPage(session.getCurrentPage() - 1);
+            updateAttachmentSelectMenu(player, session);
+            return;
+        }
+
+        // Next page
+        if (slot == 50) {
+            session.setCurrentPage(session.getCurrentPage() + 1);
+            updateAttachmentSelectMenu(player, session);
+            return;
+        }
+
+        // Skip bottom row navigation
+        if (slot >= 45) {
+            return;
+        }
+
+        // Attachment selection (slots 0-44)
+        if (slot < 45) {
+            String attachmentSlotKey = session.getCurrentAttachmentSlot();
+            LoadoutsConfig.AttachmentSlotConfig slotConfig = config.getAttachmentSlot(attachmentSlotKey);
+            if (slotConfig == null)
+                return;
+
+            // Get attachments for this slot
+            List<String> attachments = wmIntegration.getAttachmentsForCategories(slotConfig.categories());
+
+            int page = session.getCurrentPage();
+            int itemsPerPage = config.getItemsPerPage();
+            int index = page * itemsPerPage + slot;
+
+            if (index < attachments.size()) {
+                String attachmentId = attachments.get(index);
+
+                // Set selected attachment
+                session.setAttachment(attachmentSlotKey, attachmentId);
+
+                player.sendMessage(Component.text("アタッチメント選択: ", NamedTextColor.GREEN)
+                        .append(Component.text(attachmentId, NamedTextColor.YELLOW)));
+
+                // Go back to category menu
+                openCategoryMenu(player, session.getEditingSlotNumber());
             }
         }
     }
@@ -712,6 +937,62 @@ public class GuiManager implements Listener {
 
         } else {
             // No selection - use default category icon
+            item = new ItemStack(slotConfig.icon());
+            meta = item.getItemMeta();
+
+            meta.displayName(slotConfig.getDisplayNameComponent()
+                    .decoration(TextDecoration.ITALIC, false));
+
+            List<Component> lore = new ArrayList<>();
+            lore.add(Component.text("未選択", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.empty());
+            lore.add(Component.text("クリックして選択", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            meta.lore(lore);
+        }
+
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    /**
+     * Create attachment slot icon for the category menu
+     */
+    private ItemStack createAttachmentSlotIcon(String slotKey, LoadoutsConfig.AttachmentSlotConfig slotConfig,
+            LoadoutManager.LoadoutEditSession session) {
+
+        ItemStack item;
+        ItemMeta meta;
+
+        // Check if player has selected an attachment for this slot
+        if (session.hasAttachment(slotKey)) {
+            String attachmentId = session.getAttachment(slotKey);
+
+            // Try to generate the actual attachment item
+            ItemStack attachmentItem = wmIntegration.generateAttachmentItem(attachmentId);
+            if (attachmentItem != null) {
+                item = attachmentItem;
+            } else {
+                item = new ItemStack(slotConfig.icon());
+            }
+
+            meta = item.getItemMeta();
+
+            // Override display name
+            meta.displayName(slotConfig.getDisplayNameComponent()
+                    .append(Component.text(" - ", NamedTextColor.GRAY))
+                    .append(Component.text(attachmentId, NamedTextColor.GREEN))
+                    .decoration(TextDecoration.ITALIC, false));
+
+            List<Component> lore = new ArrayList<>();
+            lore.add(Component.text("✓ 選択済み", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.empty());
+            lore.add(Component.text("クリックで変更", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+
+            meta.setEnchantmentGlintOverride(true);
+            meta.lore(lore);
+
+        } else {
+            // No selection - use default icon
             item = new ItemStack(slotConfig.icon());
             meta = item.getItemMeta();
 
@@ -869,6 +1150,7 @@ public class GuiManager implements Listener {
         MAIN_MENU,
         SLOT_SELECT,
         CATEGORY_MENU,
-        WEAPON_SELECT
+        WEAPON_SELECT,
+        ATTACHMENT_SELECT
     }
 }

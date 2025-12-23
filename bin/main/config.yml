@@ -1,0 +1,167 @@
+# Loadouts プラグイン設定
+# WeaponMechanics連携 ロードアウト管理
+
+# Database settings
+# SQLite is default for easy setup, MySQL available for production
+database:
+  type: sqlite  # mysql or sqlite
+  mysql:
+    host: localhost
+    port: 3306
+    database: loadouts
+    username: root
+    password: ""
+  sqlite:
+    file: loadouts.db
+
+# Ammo calculation multipliers per category (folder name in WeaponMechanics/weapons/)
+# Formula: magazine_size * multiplier = reserve_ammo
+ammo-multipliers:
+  assault_rifles: 4
+  sub_machine_guns: 5
+  sniper_rifles: 2
+  marksman_rifles: 3
+  shotguns: 3
+  light_machine_guns: 3
+  pistols: 4
+  rocket_launchers: 1
+  explosives: 2
+  consumables: 1
+  melee: 0
+  default: 4
+
+# Item amounts for consumables/throwables (items without ammo)
+# Used when weapon has no Reload section or no ammo definition
+# Can be set per-category or per-item
+item-amounts:
+  # Per category defaults
+  explosives: 2        # Grenades get 2
+  consumables: 1       # Stims get 1
+  melee: 1
+  default: 1
+  # Per item overrides (uncomment to use):
+  # Grenade: 2
+  # Flashbang: 2
+  # Stim: 1
+
+# Slot configuration - which WM categories are allowed per slot
+slots:
+  primary:
+    display-name: "&c&lメインウェポン"
+    icon: DIAMOND_SWORD
+    allowed-categories:
+      - assault_rifles
+      - sub_machine_guns
+      - sniper_rifles
+      - marksman_rifles
+      - shotguns
+      - light_machine_guns
+  secondary:
+    display-name: "&6&lサブウェポン"
+    icon: BOW
+    allowed-categories:
+      - pistols
+      - rocket_launchers
+  throwable:
+    display-name: "&a&l投げ物"
+    icon: EGG
+    allowed-categories:
+      - explosives
+  tactical:
+    display-name: "&b&lタクティカル"
+    icon: SLIME_BALL
+    allowed-categories:
+      - consumables
+  melee:
+    display-name: "&7&l近接武器"
+    icon: IRON_SWORD
+    allowed-categories:
+      - melee
+
+# Attachment slot configuration
+# Maps each GUI slot to attachment categories (folder names in WeaponMechanics/attachments/)
+# Multiple categories can be combined with comma
+attachment-slots:
+  slot1:
+    display-name: "&e&lサイト"
+    icon: SPYGLASS
+    categories:
+      - sights
+  slot2:
+    display-name: "&e&lバレル"
+    icon: IRON_INGOT
+    categories:
+      - barrels
+      - default
+  slot3:
+    display-name: "&e&lグリップ"
+    icon: STICK
+    categories:
+      - grips
+  slot4:
+    display-name: "&e&lレーザー"
+    icon: REDSTONE_TORCH
+    categories:
+      - lasers
+  slot5:
+    display-name: "&e&lその他"
+    icon: NETHER_STAR
+    categories:
+      - kit
+      - perks
+
+# Custom (non-WM) items that can be added to loadouts
+# Uncomment and modify to add vanilla items or other plugin items
+custom-items: {}
+  # Example:
+  # golden_apple:
+  #   slot-type: tactical
+  #   display-name: "&6Golden Apple"
+  #   material: GOLDEN_APPLE
+  #   amount: 1
+
+# Maximum loadouts per player
+max-loadouts: 5
+
+# GUI settings
+gui:
+  category-menu:
+    title: "&8&lロードアウト編集"
+    size: 54  # 6 rows
+  weapon-select:
+    title: "&8&l%category% を選択"
+    items-per-page: 45
+  attachment-select:
+    title: "&8&lアタッチメント選択"
+    items-per-page: 45
+  confirm-button:
+    material: LIME_STAINED_GLASS_PANE
+    display-name: "&a&l決定 - アイテムを受け取る"
+  back-button:
+    material: ARROW
+    display-name: "&7戻る"
+  next-page:
+    material: ARROW
+    display-name: "&e次のページ →"
+  prev-page:
+    material: ARROW
+    display-name: "&e← 前のページ"
+
+# Messages (Japanese)
+messages:
+  prefix: "&8[&6Loadouts&8] "
+  loadout-saved: "&aロードアウト '&e%name%&a' を保存しました！"
+  loadout-applied: "&aロードアウト '&e%name%&a' を適用しました！"
+  save-prompt: "&eアイテムを並べ替え、アタッチメントを装着してから &6/loadout save <名前> &eで保存してください。"
+  no-loadout: "&cロードアウト '&e%name%&c' が見つかりません！"
+  max-loadouts-reached: "&cロードアウト数の上限（%max%個）に達しました！"
+  loadout-deleted: "&cロードアウト '&e%name%&c' を削除しました。"
+  slot-selected: "&a%slot% に &e%weapon% &aを選択しました。"
+  items-granted: "&a選択したアイテムをインベントリに付与しました。"
+  no-permission: "&cこのコマンドを使用する権限がありません。"
+  player-only: "&cこのコマンドはプレイヤーのみ使用できます。"
+  invalid-usage: "&c使用法: /loadout <edit|save|give|list|delete>"
+  loadout-list-header: "&6--- あなたのロードアウト ---"
+  loadout-list-item: "&7- &e%name% &7(作成: %date%)"
+  loadout-list-empty: "&7保存されたロードアウトはありません。"
+  confirm-delete: "&c本当に '&e%name%&c' を削除しますか？ もう一度コマンドを実行してください。"
