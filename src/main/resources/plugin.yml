@@ -1,0 +1,37 @@
+name: Loadouts
+version: '${version}'
+main: com.saratoga.loadouts.Loadouts
+api-version: '1.21'
+description: WeaponMechanics連携 ロードアウト管理プラグイン
+author: Saratoga
+depend:
+  - WeaponMechanics
+softdepend: []
+
+commands:
+  loadout:
+    description: ロードアウト管理コマンド
+    usage: /<command> <edit|save|give|list|delete>
+    aliases:
+      - lo
+      - kit
+
+permissions:
+  loadouts.use:
+    description: ロードアウト機能を使用する
+    default: true
+  loadouts.edit:
+    description: ロードアウトを編集する
+    default: true
+  loadouts.save:
+    description: ロードアウトを保存する
+    default: true
+  loadouts.give:
+    description: ロードアウトを受け取る
+    default: true
+  loadouts.delete:
+    description: ロードアウトを削除する
+    default: true
+  loadouts.admin:
+    description: 管理者権限（他プレイヤーのロードアウト管理）
+    default: op
