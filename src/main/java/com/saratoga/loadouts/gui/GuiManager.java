@@ -159,21 +159,38 @@ public class GuiManager implements Listener {
 
     /**
      * Open the category selection menu (after selecting a slot)
+     * CRITICAL: Always clear and reinitialize session based on target slot's saved
+     * data
      */
     public void openCategoryMenu(Player player, int slotNumber) {
-        // Get existing session or create new one
+        // Always get fresh session for the target slot
         LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
-        if (session == null) {
-            session = loadoutManager.startEditSession(player);
 
-            // If editing a slot that already has a saved loadout, restore those selections
+        // Check if we need to create new session or reinitialize existing one
+        boolean needsReinit = (session == null) || (session.getEditingSlotNumber() != slotNumber);
+
+        if (needsReinit) {
+            // Clear any existing session first
+            if (session != null) {
+                session.clearSelections();
+            } else {
+                session = loadoutManager.startEditSession(player);
+            }
+
+            // Set the target slot number
+            session.setEditingSlotNumber(slotNumber);
+
+            // Load data from saved loadout for this specific slot (if exists)
             Loadout existingLoadout = loadoutManager.getLoadout(player.getUniqueId(), String.valueOf(slotNumber));
             if (existingLoadout != null && !existingLoadout.getSlots().isEmpty()) {
                 session.loadFromLoadout(existingLoadout);
-                player.sendMessage(Component.text("保存済みロードアウトから設定を復元しました。", NamedTextColor.GREEN));
+                player.sendMessage(Component.text("スロット " + slotNumber + " の保存済みデータを復元しました。", NamedTextColor.GREEN));
+            } else {
+                // New slot - ensure selections are empty
+                session.clearSelections();
+                player.sendMessage(Component.text("スロット " + slotNumber + " を新規作成します。", NamedTextColor.YELLOW));
             }
         }
-        session.setEditingSlotNumber(slotNumber);
 
         refreshCategoryMenu(player, session);
     }

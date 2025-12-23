@@ -13,6 +13,7 @@ public class Loadout {
     private UUID playerUUID;
     private String name;
     private final Map<String, LoadoutSlot> slots;
+    private final Map<String, String> attachments; // slotKey -> attachmentId
     private List<ItemStack> finalItems;
     private long createdAt;
     private long updatedAt;
@@ -25,6 +26,7 @@ public class Loadout {
         this.playerUUID = playerUUID;
         this.name = name;
         this.slots = new LinkedHashMap<>();
+        this.attachments = new LinkedHashMap<>();
         this.finalItems = new ArrayList<>();
         this.createdAt = System.currentTimeMillis();
         this.updatedAt = System.currentTimeMillis();
@@ -38,6 +40,7 @@ public class Loadout {
         this.playerUUID = playerUUID;
         this.name = name;
         this.slots = new LinkedHashMap<>();
+        this.attachments = new LinkedHashMap<>();
         this.finalItems = new ArrayList<>();
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -74,6 +77,24 @@ public class Loadout {
 
     public LoadoutSlot getSlot(String slotType) {
         return slots.get(slotType);
+    }
+
+    // Attachment methods
+    public Map<String, String> getAttachments() {
+        return attachments;
+    }
+
+    public void setAttachment(String slotKey, String attachmentId) {
+        attachments.put(slotKey, attachmentId);
+        updatedAt = System.currentTimeMillis();
+    }
+
+    public String getAttachment(String slotKey) {
+        return attachments.get(slotKey);
+    }
+
+    public boolean hasAttachments() {
+        return !attachments.isEmpty();
     }
 
     public List<ItemStack> getFinalItems() {

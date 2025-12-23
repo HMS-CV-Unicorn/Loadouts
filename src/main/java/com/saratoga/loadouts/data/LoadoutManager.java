@@ -133,11 +133,16 @@ public class LoadoutManager {
             loadout = new Loadout(playerUUID, slotNumber);
         }
 
-        // Get edit session slots if any
+        // Get edit session slots and attachments if any
         LoadoutEditSession session = getEditSession(playerUUID);
         if (session != null) {
+            // Copy weapon slots
             for (LoadoutSlot slot : session.getSelectedSlots().values()) {
                 loadout.setSlot(slot.getSlotType(), slot);
+            }
+            // Copy attachments
+            for (Map.Entry<String, String> entry : session.getSelectedAttachments().entrySet()) {
+                loadout.setAttachment(entry.getKey(), entry.getValue());
             }
         }
 
@@ -381,9 +386,16 @@ public class LoadoutManager {
                 return;
             }
 
+            // Load weapon slots
             selectedSlots.clear();
             for (Map.Entry<String, LoadoutSlot> entry : loadout.getSlots().entrySet()) {
                 selectedSlots.put(entry.getKey(), entry.getValue());
+            }
+
+            // Load attachments
+            selectedAttachments.clear();
+            for (Map.Entry<String, String> entry : loadout.getAttachments().entrySet()) {
+                selectedAttachments.put(entry.getKey(), entry.getValue());
             }
         }
     }

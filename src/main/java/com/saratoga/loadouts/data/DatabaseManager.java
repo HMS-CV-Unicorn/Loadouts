@@ -70,6 +70,7 @@ public class DatabaseManager {
         String createLoadoutsTable;
         String createItemsTable;
         String createSlotsTable;
+        String createAttachmentsTable;
 
         if (useMysql) {
             createLoadoutsTable = """
@@ -108,6 +109,17 @@ public class DatabaseManager {
                         UNIQUE KEY unique_loadout_slot_index (loadout_id, slot_index)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                     """;
+
+            createAttachmentsTable = """
+                    CREATE TABLE IF NOT EXISTS loadout_attachments (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        loadout_id INT NOT NULL,
+                        slot_key VARCHAR(64) NOT NULL,
+                        attachment_id VARCHAR(128) NOT NULL,
+                        FOREIGN KEY (loadout_id) REFERENCES loadouts(id) ON DELETE CASCADE,
+                        UNIQUE KEY unique_loadout_attachment (loadout_id, slot_key)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """;
         } else {
             createLoadoutsTable = """
                     CREATE TABLE IF NOT EXISTS loadouts (
@@ -144,6 +156,17 @@ public class DatabaseManager {
                         UNIQUE(loadout_id, slot_index)
                     )
                     """;
+
+            createAttachmentsTable = """
+                    CREATE TABLE IF NOT EXISTS loadout_attachments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        loadout_id INTEGER NOT NULL,
+                        slot_key TEXT NOT NULL,
+                        attachment_id TEXT NOT NULL,
+                        FOREIGN KEY (loadout_id) REFERENCES loadouts(id) ON DELETE CASCADE,
+                        UNIQUE(loadout_id, slot_key)
+                    )
+                    """;
         }
 
         try (Connection conn = getConnection();
@@ -151,6 +174,7 @@ public class DatabaseManager {
             stmt.execute(createLoadoutsTable);
             stmt.execute(createSlotsTable);
             stmt.execute(createItemsTable);
+            stmt.execute(createAttachmentsTable);
         }
     }
 
@@ -204,12 +228,17 @@ public class DatabaseManager {
                     loadout.setId(loadoutId);
                 }
 
-                // Clear existing slots and items
+                // Clear existing slots, items, and attachments
                 try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM loadout_slots WHERE loadout_id = ?")) {
                     stmt.setInt(1, loadoutId);
                     stmt.executeUpdate();
                 }
                 try (PreparedStatement stmt = conn.prepareStatement("DELETE FROM loadout_items WHERE loadout_id = ?")) {
+                    stmt.setInt(1, loadoutId);
+                    stmt.executeUpdate();
+                }
+                try (PreparedStatement stmt = conn
+                        .prepareStatement("DELETE FROM loadout_attachments WHERE loadout_id = ?")) {
                     stmt.setInt(1, loadoutId);
                     stmt.executeUpdate();
                 }
@@ -227,6 +256,20 @@ public class DatabaseManager {
                         stmt.addBatch();
                     }
                     stmt.executeBatch();
+                }
+
+                // Insert attachments
+                if (loadout.hasAttachments()) {
+                    String insertAttachment = "INSERT INTO loadout_attachments (loadout_id, slot_key, attachment_id) VALUES (?, ?, ?)";
+                    try (PreparedStatement stmt = conn.prepareStatement(insertAttachment)) {
+                        for (Map.Entry<String, String> entry : loadout.getAttachments().entrySet()) {
+                            stmt.setInt(1, loadoutId);
+                            stmt.setString(2, entry.getKey());
+                            stmt.setString(3, entry.getValue());
+                            stmt.addBatch();
+                        }
+                        stmt.executeBatch();
+                    }
                 }
 
                 // Insert final items
@@ -277,6 +320,7 @@ public class DatabaseManager {
                             rs.getLong("created_at"),
                             rs.getLong("updated_at"));
                     loadSlots(conn, loadout);
+                    loadAttachments(conn, loadout);
                     loadItems(conn, loadout);
                     return loadout;
                 }
@@ -305,6 +349,7 @@ public class DatabaseManager {
                             rs.getLong("created_at"),
                             rs.getLong("updated_at"));
                     loadSlots(conn, loadout);
+                    loadAttachments(conn, loadout);
                     loadItems(conn, loadout);
                     loadouts.add(loadout);
                 }
@@ -369,6 +414,21 @@ public class DatabaseManager {
                             rs.getBoolean("is_wm_weapon"),
                             rs.getInt("ammo_amount"));
                     loadout.setSlot(slot.getSlotType(), slot);
+                }
+            }
+        }
+    }
+
+    /**
+     * Load attachments for a loadout
+     */
+    private void loadAttachments(Connection conn, Loadout loadout) throws SQLException {
+        String query = "SELECT slot_key, attachment_id FROM loadout_attachments WHERE loadout_id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(query)) {
+            stmt.setInt(1, loadout.getId());
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    loadout.setAttachment(rs.getString("slot_key"), rs.getString("attachment_id"));
                 }
             }
         }
