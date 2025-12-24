@@ -38,6 +38,9 @@ public class GuiManager implements Listener {
     // Track which inventory is which type
     private final Map<UUID, GuiType> openGuis = new HashMap<>();
 
+    // Track players in forced loadout selection mode (cannot ESC out)
+    private final Set<UUID> selectingLoadoutPlayers = new HashSet<>();
+
     // Max loadout slots
     private static final int MAX_SLOTS = 5;
 
@@ -54,48 +57,126 @@ public class GuiManager implements Listener {
      * Open the main loadout selection menu (APPLY ONLY - no editing)
      */
     public void openMainMenu(Player player) {
-        Inventory inv = Bukkit.createInventory(null, 27,
+        openMainMenu(player, false);
+    }
+
+    /**
+     * Open the main loadout selection menu with optional force-selection mode.
+     * In force mode, player cannot ESC out and must select a loadout.
+     * Layout: Row 1 = Personal loadouts (11-15), Row 3 = Global loadouts (29-33)
+     */
+    public void openMainMenu(Player player, boolean forceSelection) {
+        // Use custom InventoryHolder for reliable identification
+        // Expand to 45 slots (5 rows) to fit global loadouts
+        Inventory inv = Bukkit.createInventory(new LoadoutSelectionHolder(), 45,
                 Component.text("ロードアウト選択", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
 
-        // Loadout slots (1-5) - apply only
+        // === Personal Loadouts (Row 1: slots 11-15) ===
+        // Label for personal loadouts (slot 10)
+        ItemStack personalLabel = new ItemStack(Material.PLAYER_HEAD);
+        ItemMeta personalMeta = personalLabel.getItemMeta();
+        personalMeta.displayName(Component.text("あなたのロードアウト", NamedTextColor.AQUA).decorate(TextDecoration.BOLD)
+                .decoration(TextDecoration.ITALIC, false));
+        personalLabel.setItemMeta(personalMeta);
+        inv.setItem(10, personalLabel);
+
         for (int i = 1; i <= MAX_SLOTS; i++) {
             Loadout loadout = loadoutManager.getLoadout(player.getUniqueId(), String.valueOf(i));
-            ItemStack slotItem = createApplySlotItem(i, loadout);
+            ItemStack slotItem = createApplySlotItem(i, loadout, false);
             inv.setItem(10 + i, slotItem);
+        }
+
+        // === Global Loadouts (Row 3: slots 29-33) ===
+        // Label for global loadouts (slot 28)
+        ItemStack globalLabel = new ItemStack(Material.NETHER_STAR);
+        ItemMeta globalMeta = globalLabel.getItemMeta();
+        globalMeta.displayName(Component.text("スターターキット (共通)", NamedTextColor.GOLD).decorate(TextDecoration.BOLD)
+                .decoration(TextDecoration.ITALIC, false));
+        globalMeta.lore(List.of(
+                Component.text("全プレイヤーが利用可能", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        globalLabel.setItemMeta(globalMeta);
+        inv.setItem(28, globalLabel);
+
+        for (int i = 1; i <= MAX_SLOTS; i++) {
+            Loadout globalLoadout = loadoutManager.getGlobalLoadout(String.valueOf(i));
+            ItemStack slotItem = createApplySlotItem(i, globalLoadout, true);
+            inv.setItem(28 + i, slotItem);
         }
 
         // Fill empty slots
         fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
 
+        // Track force-selection mode BEFORE opening inventory
+        if (forceSelection) {
+            selectingLoadoutPlayers.add(player.getUniqueId());
+            plugin.getLogger().info("[DEBUG] Added " + player.getName() + " to selectingLoadoutPlayers (force mode)");
+        }
+
         player.openInventory(inv);
         openGuis.put(player.getUniqueId(), GuiType.MAIN_MENU);
+        plugin.getLogger().info(
+                "[DEBUG] Opened loadout menu for " + player.getName() + " (forceSelection=" + forceSelection + ")");
+    }
+
+    /**
+     * Check if player is in force-selection mode
+     */
+    public boolean isInForceSelectionMode(UUID playerUUID) {
+        return selectingLoadoutPlayers.contains(playerUUID);
+    }
+
+    /**
+     * Remove player from force-selection mode (call after successful loadout
+     * application)
+     */
+    public void completeForceSelection(UUID playerUUID) {
+        selectingLoadoutPlayers.remove(playerUUID);
     }
 
     /**
      * Create a loadout slot button item (for apply menu)
+     * 
+     * @param isGlobal true if this is a global loadout slot
      */
-    private ItemStack createApplySlotItem(int slotNumber, Loadout loadout) {
+    private ItemStack createApplySlotItem(int slotNumber, Loadout loadout, boolean isGlobal) {
         boolean hasLoadout = loadout != null && loadout.hasFinalItems();
-        Material material = hasLoadout ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
+        Material material;
+        if (isGlobal) {
+            material = hasLoadout ? Material.ORANGE_STAINED_GLASS_PANE : Material.LIGHT_GRAY_STAINED_GLASS_PANE;
+        } else {
+            material = hasLoadout ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
+        }
 
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
 
-        Component title = Component.text("スロット " + slotNumber,
-                hasLoadout ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY)
+        String prefix = isGlobal ? "[共通] " : "";
+        NamedTextColor activeColor = isGlobal ? NamedTextColor.GOLD : NamedTextColor.GREEN;
+
+        Component title = Component.text(prefix + "スロット " + slotNumber,
+                hasLoadout ? activeColor : NamedTextColor.DARK_GRAY)
                 .decorate(TextDecoration.BOLD)
                 .decoration(TextDecoration.ITALIC, false);
         meta.displayName(title);
 
         List<Component> lore = new ArrayList<>();
         if (hasLoadout) {
-            lore.add(Component.text("保存済み", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            if (isGlobal) {
+                lore.add(Component.text("スターターキット", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            } else {
+                lore.add(Component.text("保存済み", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            }
             lore.add(Component.empty());
             lore.add(Component.text("クリックで装備", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
         } else {
-            lore.add(Component.text("空きスロット", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.empty());
-            lore.add(Component.text("/loadout edit で編集", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            if (isGlobal) {
+                lore.add(Component.text("未設定", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+            } else {
+                lore.add(Component.text("空きスロット", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.empty());
+                lore.add(Component.text("/loadout edit で編集", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC,
+                        false));
+            }
         }
 
         meta.lore(lore);
@@ -190,6 +271,36 @@ public class GuiManager implements Listener {
                 session.clearSelections();
                 player.sendMessage(Component.text("スロット " + slotNumber + " を新規作成します。", NamedTextColor.YELLOW));
             }
+        }
+
+        refreshCategoryMenu(player, session);
+    }
+
+    /**
+     * Open the category selection menu for editing a GLOBAL loadout (admin only)
+     */
+    public void openCategoryMenuForGlobal(Player player, int slotNumber) {
+        // Clear any existing session and create new one for global editing
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session != null) {
+            session.clearSelections();
+        } else {
+            session = loadoutManager.startEditSession(player);
+        }
+
+        // Mark as global editing
+        session.setEditingGlobal(true);
+        session.setEditingSlotNumber(slotNumber);
+
+        // Load data from existing global loadout if exists
+        Loadout existingGlobal = loadoutManager.getGlobalLoadout(String.valueOf(slotNumber));
+        if (existingGlobal != null && !existingGlobal.getSlots().isEmpty()) {
+            session.loadFromLoadout(existingGlobal);
+            player.sendMessage(
+                    Component.text("[Global] スロット " + slotNumber + " の保存済みデータを復元しました。", NamedTextColor.GOLD));
+        } else {
+            session.clearSelections();
+            player.sendMessage(Component.text("[Global] スロット " + slotNumber + " を新規作成します。", NamedTextColor.GOLD));
         }
 
         refreshCategoryMenu(player, session);
@@ -680,7 +791,7 @@ public class GuiManager implements Listener {
     }
 
     private void handleMainMenuClick(Player player, int slot, ItemStack clicked, boolean rightClick) {
-        // Slots 11-15 are loadout slots 1-5
+        // === Personal Loadouts: Slots 11-15 ===
         if (slot >= 11 && slot <= 15) {
             int slotNumber = slot - 10;
             Loadout loadout = loadoutManager.getLoadout(player.getUniqueId(), String.valueOf(slotNumber));
@@ -689,6 +800,8 @@ public class GuiManager implements Listener {
             if (loadout != null && loadout.hasFinalItems()) {
                 boolean applied = loadoutManager.applyLoadout(player, String.valueOf(slotNumber));
                 if (applied) {
+                    // Successfully applied - remove from force-selection mode BEFORE closing
+                    completeForceSelection(player.getUniqueId());
                     player.closeInventory();
                     player.sendMessage(config.getMessageComponent("loadout-applied",
                             Map.of("name", "スロット " + slotNumber)));
@@ -696,7 +809,30 @@ public class GuiManager implements Listener {
             } else {
                 // No loadout saved - inform player
                 player.sendMessage(Component.text("このスロットにはロードアウトが保存されていません。", NamedTextColor.RED));
-                player.sendMessage(Component.text("/loadout edit で編集してください。", NamedTextColor.GRAY));
+                if (isInForceSelectionMode(player.getUniqueId())) {
+                    player.sendMessage(Component.text("保存済みのスロットまたはスターターキットを選択してください。", NamedTextColor.YELLOW));
+                } else {
+                    player.sendMessage(Component.text("/loadout edit で編集してください。", NamedTextColor.GRAY));
+                }
+            }
+            return;
+        }
+
+        // === Global Loadouts: Slots 29-33 ===
+        if (slot >= 29 && slot <= 33) {
+            int slotNumber = slot - 28;
+            Loadout globalLoadout = loadoutManager.getGlobalLoadout(String.valueOf(slotNumber));
+
+            if (globalLoadout != null && globalLoadout.hasFinalItems()) {
+                boolean applied = loadoutManager.applyGlobalLoadout(player, String.valueOf(slotNumber));
+                if (applied) {
+                    // Successfully applied - remove from force-selection mode BEFORE closing
+                    completeForceSelection(player.getUniqueId());
+                    player.closeInventory();
+                    player.sendMessage(Component.text("スターターキット " + slotNumber + " を装備しました！", NamedTextColor.GOLD));
+                }
+            } else {
+                player.sendMessage(Component.text("このスターターキットは設定されていません。", NamedTextColor.RED));
             }
         }
     }
@@ -886,8 +1022,41 @@ public class GuiManager implements Listener {
 
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
-        if (event.getPlayer() instanceof Player player) {
-            openGuis.remove(player.getUniqueId());
+        if (!(event.getPlayer() instanceof Player player)) {
+            return;
+        }
+
+        UUID playerUUID = player.getUniqueId();
+
+        // Debug logging
+        String invTitle = event.getView().getTitle();
+        boolean isLoadoutSelectionMenu = event.getInventory().getHolder() instanceof LoadoutSelectionHolder;
+        boolean isInForceMode = selectingLoadoutPlayers.contains(playerUUID);
+
+        plugin.getLogger().info("[DEBUG] InventoryCloseEvent fired for " + player.getName());
+        plugin.getLogger().info("[DEBUG]   Title: " + invTitle);
+        plugin.getLogger().info("[DEBUG]   IsLoadoutSelectionHolder: " + isLoadoutSelectionMenu);
+        plugin.getLogger().info("[DEBUG]   IsInForceMode: " + isInForceMode);
+
+        // Clean up GUI tracking
+        openGuis.remove(playerUUID);
+
+        // If this is the loadout selection menu and player is in force-selection mode,
+        // reopen it
+        if (isLoadoutSelectionMenu && isInForceMode) {
+            plugin.getLogger().info("[DEBUG]   -> Scheduling menu reopen for " + player.getName());
+            // Use scheduler to reopen 1 tick later (cannot open inventory during close
+            // event)
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline() && selectingLoadoutPlayers.contains(playerUUID)) {
+                    plugin.getLogger().info("[DEBUG]   -> Reopening menu for " + player.getName());
+                    player.sendMessage(Component.text("ロードアウトを選択してください！", NamedTextColor.RED));
+                    openMainMenu(player, true); // Reopen in force mode
+                } else {
+                    plugin.getLogger().info("[DEBUG]   -> Player " + player.getName()
+                            + " no longer needs reopen (offline or completed)");
+                }
+            }, 1L);
         }
     }
 
@@ -895,6 +1064,7 @@ public class GuiManager implements Listener {
     public void onPlayerQuit(PlayerQuitEvent event) {
         UUID uuid = event.getPlayer().getUniqueId();
         openGuis.remove(uuid);
+        selectingLoadoutPlayers.remove(uuid); // Cleanup force-selection tracking
         loadoutManager.endEditSession(uuid);
         loadoutManager.clearCache(uuid);
     }

@@ -21,6 +21,9 @@ public class LoadoutManager {
     private final DatabaseManager databaseManager;
     private final LoadoutsConfig config;
 
+    // Special UUID for global (server-wide) loadouts
+    public static final UUID GLOBAL_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
     // Cache of loaded loadouts: playerUUID -> (slotNumber -> Loadout)
     private final Map<UUID, Map<String, Loadout>> loadoutCache = new ConcurrentHashMap<>();
 
@@ -121,20 +124,24 @@ public class LoadoutManager {
      */
     public CompletableFuture<Boolean> saveCurrentInventory(Player player, String slotNumber) {
         UUID playerUUID = player.getUniqueId();
+        LoadoutEditSession session = getEditSession(playerUUID);
+
+        // Determine the target UUID (player or global)
+        UUID targetUUID = (session != null && session.isEditingGlobal()) ? GLOBAL_UUID : playerUUID;
+        boolean isGlobal = targetUUID.equals(GLOBAL_UUID);
 
         // Create or update loadout
-        Loadout existing = getLoadout(playerUUID, slotNumber);
+        Loadout existing = getLoadout(targetUUID, slotNumber);
         Loadout loadout;
 
         if (existing != null) {
             loadout = existing;
             loadout.setUpdatedAt(System.currentTimeMillis());
         } else {
-            loadout = new Loadout(playerUUID, slotNumber);
+            loadout = new Loadout(targetUUID, slotNumber);
         }
 
         // Get edit session slots and attachments if any
-        LoadoutEditSession session = getEditSession(playerUUID);
         if (session != null) {
             // Copy weapon slots
             for (LoadoutSlot slot : session.getSelectedSlots().values()) {
@@ -156,6 +163,11 @@ public class LoadoutManager {
         // End edit session
         endEditSession(playerUUID);
 
+        // Log for global saves
+        if (isGlobal) {
+            plugin.getLogger().info("Saving global loadout slot " + slotNumber + " by " + player.getName());
+        }
+
         return saveLoadout(loadout);
     }
 
@@ -164,6 +176,36 @@ public class LoadoutManager {
      */
     public boolean applyLoadout(Player player, String slotNumber) {
         Loadout loadout = getLoadout(player.getUniqueId(), slotNumber);
+        if (loadout == null || !loadout.hasFinalItems()) {
+            return false;
+        }
+
+        // Clear and set inventory
+        player.getInventory().clear();
+
+        List<ItemStack> items = loadout.getFinalItems();
+        for (int i = 0; i < items.size() && i < player.getInventory().getSize(); i++) {
+            ItemStack item = items.get(i);
+            if (item != null) {
+                player.getInventory().setItem(i, item.clone());
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Get a global loadout by slot number
+     */
+    public Loadout getGlobalLoadout(String slotNumber) {
+        return getLoadout(GLOBAL_UUID, slotNumber);
+    }
+
+    /**
+     * Apply a global loadout to a player
+     */
+    public boolean applyGlobalLoadout(Player player, String slotNumber) {
+        Loadout loadout = getGlobalLoadout(slotNumber);
         if (loadout == null || !loadout.hasFinalItems()) {
             return false;
         }
@@ -279,6 +321,7 @@ public class LoadoutManager {
     public static class LoadoutEditSession {
         private final UUID playerUUID;
         private int editingSlotNumber = 1; // Which loadout slot (1-5) being edited
+        private boolean editingGlobal = false; // Whether editing a global (server-wide) loadout
         private String currentSlotType; // Current weapon category slot being selected
         private String currentAttachmentSlot; // Current attachment slot being selected
         private int currentPage = 0; // Pagination for weapon selection
@@ -301,6 +344,14 @@ public class LoadoutManager {
 
         public void setEditingSlotNumber(int editingSlotNumber) {
             this.editingSlotNumber = editingSlotNumber;
+        }
+
+        public boolean isEditingGlobal() {
+            return editingGlobal;
+        }
+
+        public void setEditingGlobal(boolean editingGlobal) {
+            this.editingGlobal = editingGlobal;
         }
 
         public String getCurrentSlotType() {

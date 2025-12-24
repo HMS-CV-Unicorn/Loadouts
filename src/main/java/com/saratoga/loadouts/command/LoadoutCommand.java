@@ -51,16 +51,16 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        // Default command (no args) opens main menu
+        // Default command (no args) opens main menu in FORCE mode
         if (args.length == 0) {
-            guiManager.openMainMenu(player);
+            guiManager.openMainMenu(player, true); // Force selection - cannot ESC out
             return true;
         }
 
         String subCommand = args[0].toLowerCase();
 
         switch (subCommand) {
-            case "menu" -> guiManager.openMainMenu(player);
+            case "menu" -> guiManager.openMainMenu(player, true); // Force selection
             case "edit" -> handleEdit(player, args);
             case "save" -> handleSave(player);
             case "cancel" -> handleCancel(player);
@@ -77,10 +77,37 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
 
     /**
      * /loadout edit [slotNumber]
+     * /loadout edit global <slotNumber> (admin only - edit global loadout)
      */
     private void handleEdit(Player player, String[] args) {
         if (args.length >= 2) {
-            // Slot number specified
+            // Check for global edit: /loadout edit global <slot>
+            if (args[1].equalsIgnoreCase("global")) {
+                if (!player.hasPermission("loadouts.admin")) {
+                    player.sendMessage(Component.text("グローバルロードアウトの編集には管理者権限が必要です。", NamedTextColor.RED));
+                    return;
+                }
+                if (args.length < 3) {
+                    player.sendMessage(Component.text("使用法: /loadout edit global <1-5>", NamedTextColor.RED));
+                    return;
+                }
+                try {
+                    int slotNumber = Integer.parseInt(args[2]);
+                    if (slotNumber < 1 || slotNumber > 5) {
+                        player.sendMessage(Component.text("スロット番号は1〜5を指定してください", NamedTextColor.RED));
+                        return;
+                    }
+                    // Start global edit session
+                    guiManager.openCategoryMenuForGlobal(player, slotNumber);
+                    player.sendMessage(
+                            Component.text("グローバルロードアウト スロット " + slotNumber + " を編集中...", NamedTextColor.GOLD));
+                } catch (NumberFormatException e) {
+                    player.sendMessage(Component.text("無効なスロット番号です: " + args[2], NamedTextColor.RED));
+                }
+                return;
+            }
+
+            // Normal slot number specified
             try {
                 int slotNumber = Integer.parseInt(args[1]);
                 if (slotNumber < 1 || slotNumber > 5) {
