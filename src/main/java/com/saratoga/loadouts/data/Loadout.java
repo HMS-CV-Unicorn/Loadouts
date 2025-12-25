@@ -12,6 +12,7 @@ public class Loadout {
     private int id;
     private UUID playerUUID;
     private String name;
+    private String displayName; // Custom display name with color codes
     private final Map<String, LoadoutSlot> slots;
     private final Map<String, String> attachments; // slotKey -> attachmentId
     private List<ItemStack> finalItems;
@@ -64,6 +65,25 @@ public class Loadout {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+        this.updatedAt = System.currentTimeMillis();
+    }
+
+    /**
+     * Get the display name if set, otherwise return "スロット X" format
+     */
+    public String getEffectiveDisplayName() {
+        if (displayName != null && !displayName.isEmpty()) {
+            return displayName;
+        }
+        return "スロット " + name;
     }
 
     public Map<String, LoadoutSlot> getSlots() {

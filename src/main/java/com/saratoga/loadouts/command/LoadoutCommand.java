@@ -67,6 +67,7 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
             case "give" -> handleGive(player, args);
             case "list" -> handleList(player);
             case "delete" -> handleDelete(player, args);
+            case "rename" -> handleRename(player, args);
             case "reload" -> handleReload(player);
             case "syncwm" -> handleSyncWm(player);
             default -> player.sendMessage(config.getMessageComponent("invalid-usage"));
@@ -289,6 +290,85 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
             }
         } catch (NumberFormatException e) {
             player.sendMessage(Component.text("無効なスロット番号です: " + args[1], NamedTextColor.RED));
+        }
+    }
+
+    /**
+     * /loadout rename <slot> <name> - Rename personal loadout
+     * /loadout rename global <slot> <name> - Rename global loadout (admin)
+     */
+    private void handleRename(Player player, String[] args) {
+        if (args.length < 3) {
+            player.sendMessage(Component.text("使用法: /loadout rename <1-5> <名前>", NamedTextColor.RED));
+            player.sendMessage(Component.text("管理者: /loadout rename global <1-5> <名前>", NamedTextColor.GRAY));
+            return;
+        }
+
+        boolean isGlobal = args[1].equalsIgnoreCase("global");
+
+        if (isGlobal) {
+            // Global rename: /loadout rename global <slot> <name>
+            if (!player.hasPermission("loadouts.admin")) {
+                player.sendMessage(Component.text("グローバルロードアウトの編集には管理者権限が必要です。", NamedTextColor.RED));
+                return;
+            }
+            if (args.length < 4) {
+                player.sendMessage(Component.text("使用法: /loadout rename global <1-5> <名前>", NamedTextColor.RED));
+                return;
+            }
+            try {
+                int slotNumber = Integer.parseInt(args[2]);
+                if (slotNumber < 1 || slotNumber > 5) {
+                    player.sendMessage(Component.text("スロット番号は1〜5を指定してください", NamedTextColor.RED));
+                    return;
+                }
+                // Join remaining args as name (supports spaces)
+                String newName = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+                // Convert color codes (& -> §)
+                newName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
+                        .serialize(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                                .legacyAmpersand().deserialize(newName));
+
+                Loadout loadout = loadoutManager.getGlobalLoadout(String.valueOf(slotNumber));
+                if (loadout == null) {
+                    player.sendMessage(
+                            Component.text("グローバルスロット " + slotNumber + " にはロードアウトがありません。", NamedTextColor.RED));
+                    return;
+                }
+                loadout.setDisplayName(newName);
+                loadoutManager.saveLoadout(loadout);
+                player.sendMessage(Component.text("[Global] スロット " + slotNumber + " を \"" + newName + "\" に名前変更しました。",
+                        NamedTextColor.GOLD));
+            } catch (NumberFormatException e) {
+                player.sendMessage(Component.text("無効なスロット番号です: " + args[2], NamedTextColor.RED));
+            }
+        } else {
+            // Personal rename: /loadout rename <slot> <name>
+            try {
+                int slotNumber = Integer.parseInt(args[1]);
+                if (slotNumber < 1 || slotNumber > 5) {
+                    player.sendMessage(Component.text("スロット番号は1〜5を指定してください", NamedTextColor.RED));
+                    return;
+                }
+                // Join remaining args as name
+                String newName = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
+                // Convert color codes
+                newName = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand()
+                        .serialize(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
+                                .legacyAmpersand().deserialize(newName));
+
+                Loadout loadout = loadoutManager.getLoadout(player.getUniqueId(), String.valueOf(slotNumber));
+                if (loadout == null) {
+                    player.sendMessage(Component.text("スロット " + slotNumber + " にはロードアウトがありません。", NamedTextColor.RED));
+                    return;
+                }
+                loadout.setDisplayName(newName);
+                loadoutManager.saveLoadout(loadout);
+                player.sendMessage(Component.text("スロット " + slotNumber + " を \"" + newName + "\" に名前変更しました。",
+                        NamedTextColor.GREEN));
+            } catch (NumberFormatException e) {
+                player.sendMessage(Component.text("無効なスロット番号です: " + args[1], NamedTextColor.RED));
+            }
         }
     }
 

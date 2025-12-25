@@ -175,6 +175,18 @@ public class DatabaseManager {
             stmt.execute(createSlotsTable);
             stmt.execute(createItemsTable);
             stmt.execute(createAttachmentsTable);
+
+            // Migration: Add display_name column if it doesn't exist
+            try {
+                if (useMysql) {
+                    stmt.execute("ALTER TABLE loadouts ADD COLUMN display_name VARCHAR(128) DEFAULT NULL");
+                } else {
+                    stmt.execute("ALTER TABLE loadouts ADD COLUMN display_name TEXT DEFAULT NULL");
+                }
+                plugin.getLogger().info("Added display_name column to loadouts table");
+            } catch (SQLException e) {
+                // Column already exists - ignore
+            }
         }
     }
 
@@ -189,11 +201,6 @@ public class DatabaseManager {
      * Save a loadout to the database
      */
     public void saveLoadout(Loadout loadout) throws SQLException {
-        String upsertLoadout = useMysql
-                ? "INSERT INTO loadouts (player_uuid, name, created_at, updated_at) VALUES (?, ?, ?, ?) " +
-                        "ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)"
-                : "INSERT OR REPLACE INTO loadouts (player_uuid, name, created_at, updated_at) VALUES (?, ?, ?, ?)";
-
         try (Connection conn = getConnection()) {
             conn.setAutoCommit(false);
             try {
@@ -202,18 +209,25 @@ public class DatabaseManager {
                 if (loadout.isSaved()) {
                     loadoutId = loadout.getId();
                     try (PreparedStatement stmt = conn.prepareStatement(
-                            "UPDATE loadouts SET updated_at = ? WHERE id = ?")) {
+                            "UPDATE loadouts SET updated_at = ?, display_name = ? WHERE id = ?")) {
                         stmt.setLong(1, loadout.getUpdatedAt());
-                        stmt.setInt(2, loadoutId);
+                        stmt.setString(2, loadout.getDisplayName());
+                        stmt.setInt(3, loadoutId);
                         stmt.executeUpdate();
                     }
                 } else {
-                    try (PreparedStatement stmt = conn.prepareStatement(upsertLoadout,
+                    String upsertWithDisplay = useMysql
+                            ? "INSERT INTO loadouts (player_uuid, name, created_at, updated_at, display_name) VALUES (?, ?, ?, ?, ?) "
+                                    +
+                                    "ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at), display_name = VALUES(display_name)"
+                            : "INSERT OR REPLACE INTO loadouts (player_uuid, name, created_at, updated_at, display_name) VALUES (?, ?, ?, ?, ?)";
+                    try (PreparedStatement stmt = conn.prepareStatement(upsertWithDisplay,
                             Statement.RETURN_GENERATED_KEYS)) {
                         stmt.setString(1, loadout.getPlayerUUID().toString());
                         stmt.setString(2, loadout.getName());
                         stmt.setLong(3, loadout.getCreatedAt());
                         stmt.setLong(4, loadout.getUpdatedAt());
+                        stmt.setString(5, loadout.getDisplayName());
                         stmt.executeUpdate();
 
                         // Get generated ID or existing ID
@@ -304,7 +318,7 @@ public class DatabaseManager {
      * Get a loadout by player and name
      */
     public Loadout getLoadout(UUID playerUUID, String name) throws SQLException {
-        String query = "SELECT id, player_uuid, name, created_at, updated_at FROM loadouts WHERE player_uuid = ? AND name = ?";
+        String query = "SELECT id, player_uuid, name, display_name, created_at, updated_at FROM loadouts WHERE player_uuid = ? AND name = ?";
 
         try (Connection conn = getConnection();
                 PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -319,6 +333,7 @@ public class DatabaseManager {
                             rs.getString("name"),
                             rs.getLong("created_at"),
                             rs.getLong("updated_at"));
+                    loadout.setDisplayName(rs.getString("display_name"));
                     loadSlots(conn, loadout);
                     loadAttachments(conn, loadout);
                     loadItems(conn, loadout);
@@ -334,7 +349,7 @@ public class DatabaseManager {
      */
     public List<Loadout> getPlayerLoadouts(UUID playerUUID) throws SQLException {
         List<Loadout> loadouts = new ArrayList<>();
-        String query = "SELECT id, player_uuid, name, created_at, updated_at FROM loadouts WHERE player_uuid = ? ORDER BY name";
+        String query = "SELECT id, player_uuid, name, display_name, created_at, updated_at FROM loadouts WHERE player_uuid = ? ORDER BY name";
 
         try (Connection conn = getConnection();
                 PreparedStatement stmt = conn.prepareStatement(query)) {
@@ -348,6 +363,7 @@ public class DatabaseManager {
                             rs.getString("name"),
                             rs.getLong("created_at"),
                             rs.getLong("updated_at"));
+                    loadout.setDisplayName(rs.getString("display_name"));
                     loadSlots(conn, loadout);
                     loadAttachments(conn, loadout);
                     loadItems(conn, loadout);

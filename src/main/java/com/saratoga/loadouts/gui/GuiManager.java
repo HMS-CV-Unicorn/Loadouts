@@ -41,6 +41,13 @@ public class GuiManager implements Listener {
     // Track players in forced loadout selection mode (cannot ESC out)
     private final Set<UUID> selectingLoadoutPlayers = new HashSet<>();
 
+    // Track players doing intentional GUI navigation (back button, rename, etc.)
+    // When true, InventoryCloseEvent should NOT trigger auto-proceed to save mode
+    private final Set<UUID> isNavigating = new HashSet<>();
+
+    // Track players waiting for chat input to rename loadout
+    private final Set<UUID> awaitingRename = new HashSet<>();
+
     // Max loadout slots
     private static final int MAX_SLOTS = 5;
 
@@ -72,12 +79,14 @@ public class GuiManager implements Listener {
                 Component.text("ロードアウト選択", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
 
         // === Personal Loadouts (Row 1: slots 11-15) ===
-        // Label for personal loadouts (slot 10)
+        // Label for personal loadouts (slot 10) - shows player's head
         ItemStack personalLabel = new ItemStack(Material.PLAYER_HEAD);
-        ItemMeta personalMeta = personalLabel.getItemMeta();
-        personalMeta.displayName(Component.text("あなたのロードアウト", NamedTextColor.AQUA).decorate(TextDecoration.BOLD)
+        org.bukkit.inventory.meta.SkullMeta skullMeta = (org.bukkit.inventory.meta.SkullMeta) personalLabel
+                .getItemMeta();
+        skullMeta.setOwningPlayer(player); // Use player's skin
+        skullMeta.displayName(Component.text("あなたのロードアウト", NamedTextColor.AQUA).decorate(TextDecoration.BOLD)
                 .decoration(TextDecoration.ITALIC, false));
-        personalLabel.setItemMeta(personalMeta);
+        personalLabel.setItemMeta(skullMeta);
         inv.setItem(10, personalLabel);
 
         for (int i = 1; i <= MAX_SLOTS; i++) {
@@ -150,11 +159,20 @@ public class GuiManager implements Listener {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
 
-        String prefix = isGlobal ? "[共通] " : "";
         NamedTextColor activeColor = isGlobal ? NamedTextColor.GOLD : NamedTextColor.GREEN;
 
-        Component title = Component.text(prefix + "スロット " + slotNumber,
-                hasLoadout ? activeColor : NamedTextColor.DARK_GRAY)
+        // Use custom display name if set, otherwise default format
+        String displayText;
+        if (loadout != null && loadout.getDisplayName() != null && !loadout.getDisplayName().isEmpty()) {
+            displayText = loadout.getDisplayName();
+        } else {
+            String prefix = isGlobal ? "[共通] " : "";
+            displayText = prefix + "スロット " + slotNumber;
+        }
+
+        // Parse color codes (&) in display name
+        Component title = LegacyComponentSerializer.legacyAmpersand().deserialize(displayText)
+                .colorIfAbsent(hasLoadout ? activeColor : NamedTextColor.DARK_GRAY)
                 .decorate(TextDecoration.BOLD)
                 .decoration(TextDecoration.ITALIC, false);
         meta.displayName(title);
@@ -200,10 +218,7 @@ public class GuiManager implements Listener {
             inv.setItem(10 + i, slotItem);
         }
 
-        // Back button
-        inv.setItem(22, createNavigationItem(Material.BARRIER, "&c戻る"));
-
-        // Fill empty slots
+        // Fill empty slots (no back button - editing starts from here)
         fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
 
         player.openInventory(inv);
@@ -357,6 +372,17 @@ public class GuiManager implements Listener {
 
         // Back button
         inv.setItem(45, createNavigationItem(Material.ARROW, "&7戻る"));
+
+        // Rename button (name tag at slot 53)
+        ItemStack renameItem = new ItemStack(Material.NAME_TAG);
+        ItemMeta renameMeta = renameItem.getItemMeta();
+        renameMeta.displayName(Component.text("名前の変更", NamedTextColor.YELLOW)
+                .decorate(TextDecoration.BOLD).decoration(TextDecoration.ITALIC, false));
+        renameMeta.lore(List.of(
+                Component.text("クリックしてチャットで名前を入力", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("カラーコード(&)使用可能", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false)));
+        renameItem.setItemMeta(renameMeta);
+        inv.setItem(53, renameItem);
 
         // Fill empty slots with glass
         fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
@@ -858,7 +884,19 @@ public class GuiManager implements Listener {
 
         // Back button
         if (slot == 45) {
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed
             openSlotSelectionMenu(player);
+            return;
+        }
+
+        // Rename button (slot 53)
+        if (slot == 53) {
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed
+            awaitingRename.add(player.getUniqueId());
+            player.closeInventory();
+            player.sendMessage(
+                    Component.text("=== ロードアウト名を入力してください ===", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+            player.sendMessage(Component.text("カラーコード(&)使用可能。キャンセルするには 'cancel' と入力。", NamedTextColor.GRAY));
             return;
         }
 
@@ -905,6 +943,7 @@ public class GuiManager implements Listener {
         // Navigation buttons
         if (slot == 45) {
             // Back button
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed
             openCategoryMenu(player, session.getEditingSlotNumber());
             return;
         }
@@ -968,6 +1007,7 @@ public class GuiManager implements Listener {
 
         // Back button
         if (slot == 45) {
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed
             openCategoryMenu(player, session.getEditingSlotNumber());
             return;
         }
@@ -1027,6 +1067,7 @@ public class GuiManager implements Listener {
         }
 
         UUID playerUUID = player.getUniqueId();
+        GuiType closedGuiType = openGuis.get(playerUUID);
 
         // Debug logging
         String invTitle = event.getView().getTitle();
@@ -1035,11 +1076,39 @@ public class GuiManager implements Listener {
 
         plugin.getLogger().info("[DEBUG] InventoryCloseEvent fired for " + player.getName());
         plugin.getLogger().info("[DEBUG]   Title: " + invTitle);
+        plugin.getLogger().info("[DEBUG]   GuiType: " + closedGuiType);
         plugin.getLogger().info("[DEBUG]   IsLoadoutSelectionHolder: " + isLoadoutSelectionMenu);
         plugin.getLogger().info("[DEBUG]   IsInForceMode: " + isInForceMode);
 
         // Clean up GUI tracking
         openGuis.remove(playerUUID);
+
+        // === Check if this is intentional navigation (back button, rename, etc.) ===
+        if (isNavigating.remove(playerUUID)) {
+            plugin.getLogger().info("[DEBUG]   -> Intentional navigation, skipping auto-proceed");
+            return; // Skip auto-proceed, player is navigating to another menu
+        }
+
+        // === ESC Auto-Proceed for Edit Menus ===
+        // When closing category/weapon/attachment select menus, auto-proceed to save
+        // mode
+        // instead of canceling (unless explicit /loadout cancel is used)
+        if (closedGuiType != null && (closedGuiType == GuiType.CATEGORY_MENU
+                || closedGuiType == GuiType.WEAPON_SELECT
+                || closedGuiType == GuiType.ATTACHMENT_SELECT)) {
+            LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(playerUUID);
+            if (session != null && !session.getSelectedSlots().isEmpty()) {
+                plugin.getLogger().info("[DEBUG]   -> Auto-proceeding to save mode for " + player.getName());
+                // Use scheduler to call proceed logic after close
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (player.isOnline() && loadoutManager.hasEditSession(playerUUID)) {
+                        // Trigger the same logic as clicking "proceed" button
+                        grantSelectedItems(player);
+                    }
+                }, 1L);
+                return; // Don't process force-selection reopen
+            }
+        }
 
         // If this is the loadout selection menu and player is in force-selection mode,
         // reopen it
@@ -1065,8 +1134,65 @@ public class GuiManager implements Listener {
         UUID uuid = event.getPlayer().getUniqueId();
         openGuis.remove(uuid);
         selectingLoadoutPlayers.remove(uuid); // Cleanup force-selection tracking
+        isNavigating.remove(uuid);
+        awaitingRename.remove(uuid);
         loadoutManager.endEditSession(uuid);
         loadoutManager.clearCache(uuid);
+    }
+
+    @EventHandler(priority = EventPriority.LOWEST)
+    public void onPlayerChat(io.papermc.paper.event.player.AsyncChatEvent event) {
+        Player player = event.getPlayer();
+        UUID uuid = player.getUniqueId();
+
+        if (!awaitingRename.contains(uuid)) {
+            return;
+        }
+
+        event.setCancelled(true);
+        awaitingRename.remove(uuid);
+
+        // Get raw message content
+        String message = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                .serialize(event.message());
+
+        // Check for cancel
+        if (message.equalsIgnoreCase("cancel")) {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(uuid);
+                if (session != null && player.isOnline()) {
+                    player.sendMessage(Component.text("名前変更をキャンセルしました。", NamedTextColor.YELLOW));
+                    refreshCategoryMenu(player, session);
+                }
+            });
+            return;
+        }
+
+        // Process color codes and save
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(uuid);
+            if (session == null || !player.isOnline())
+                return;
+
+            // Convert color codes (& -> section sign)
+            String coloredName = LegacyComponentSerializer.legacyAmpersand()
+                    .serialize(LegacyComponentSerializer.legacyAmpersand().deserialize(message));
+
+            // Get current loadout and set display name
+            UUID targetUUID = session.isEditingGlobal() ? LoadoutManager.GLOBAL_UUID : uuid;
+            Loadout loadout = loadoutManager.getLoadout(targetUUID, String.valueOf(session.getEditingSlotNumber()));
+
+            if (loadout != null) {
+                loadout.setDisplayName(coloredName);
+                loadoutManager.saveLoadout(loadout);
+                player.sendMessage(Component.text("ロードアウト名を \"" + message + "\" に変更しました！", NamedTextColor.GREEN));
+            } else {
+                player.sendMessage(Component.text("ロードアウトをまず保存してから名前を変更してください。", NamedTextColor.YELLOW));
+            }
+
+            // Return to category menu
+            refreshCategoryMenu(player, session);
+        });
     }
 
     // ==================== Helper Methods ====================
@@ -1258,6 +1384,11 @@ public class GuiManager implements Listener {
         return item;
     }
 
+    /**
+     * Create the proceed button for category menu
+     * Located in: GuiManager.createConfirmButton()
+     * Text and lore can be edited here for customization
+     */
     private ItemStack createConfirmButton(LoadoutManager.LoadoutEditSession session) {
         boolean hasSelections = !session.getSelectedSlots().isEmpty();
         Material material = hasSelections ? Material.LIME_STAINED_GLASS_PANE : Material.RED_STAINED_GLASS_PANE;
@@ -1266,15 +1397,23 @@ public class GuiManager implements Listener {
         ItemMeta meta = item.getItemMeta();
 
         if (hasSelections) {
-            meta.displayName(Component.text("決定 - アイテムを受け取る", NamedTextColor.GREEN)
+            // === PROCEED BUTTON TEXT (editable) ===
+            meta.displayName(Component.text("保存モードへ移行", NamedTextColor.GREEN)
                     .decorate(TextDecoration.BOLD)
                     .decoration(TextDecoration.ITALIC, false));
 
+            // === PROCEED BUTTON LORE (editable) ===
             List<Component> lore = new ArrayList<>();
             lore.add(Component.text("選択済み: " + session.getSelectedSlots().size() + " スロット",
                     NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
-            lore.add(Component.text("クリックでアイテムを受け取る", NamedTextColor.GRAY)
+            lore.add(Component.text("クリックしてアイテムを受け取ります。", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.text("インベントリでアイテム整理や", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.text("アタッチメントの装着を行ってください。", NamedTextColor.GRAY)
+                    .decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.text("完了後、/loadout save で保存します。", NamedTextColor.AQUA)
                     .decoration(TextDecoration.ITALIC, false));
             meta.lore(lore);
         } else {
