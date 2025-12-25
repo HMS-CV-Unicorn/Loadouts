@@ -99,10 +99,12 @@ public class GuiManager implements Listener {
         // Label for global loadouts (slot 28)
         ItemStack globalLabel = new ItemStack(Material.NETHER_STAR);
         ItemMeta globalMeta = globalLabel.getItemMeta();
-        globalMeta.displayName(Component.text("スターターキット (共通)", NamedTextColor.GOLD).decorate(TextDecoration.BOLD)
+        globalMeta.displayName(Component.text("スターターキット", NamedTextColor.GOLD).decorate(TextDecoration.BOLD)
                 .decoration(TextDecoration.ITALIC, false));
         globalMeta.lore(List.of(
-                Component.text("全プレイヤーが利用可能", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+                Component.text("全プレイヤーが利用可能", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("初心者でも使いやすい装備が揃っている。", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+
         globalLabel.setItemMeta(globalMeta);
         inv.setItem(28, globalLabel);
 
@@ -280,11 +282,13 @@ public class GuiManager implements Listener {
             Loadout existingLoadout = loadoutManager.getLoadout(player.getUniqueId(), String.valueOf(slotNumber));
             if (existingLoadout != null && !existingLoadout.getSlots().isEmpty()) {
                 session.loadFromLoadout(existingLoadout);
-                player.sendMessage(Component.text("スロット " + slotNumber + " の保存済みデータを復元しました。", NamedTextColor.GREEN));
+                // player.sendMessage(Component.text("スロット " + slotNumber + " の保存済みデータを復元しました。",
+                // NamedTextColor.GREEN));
             } else {
                 // New slot - ensure selections are empty
                 session.clearSelections();
-                player.sendMessage(Component.text("スロット " + slotNumber + " を新規作成します。", NamedTextColor.YELLOW));
+                // player.sendMessage(Component.text("スロット " + slotNumber + " を新規作成します。",
+                // NamedTextColor.YELLOW));
             }
         }
 
