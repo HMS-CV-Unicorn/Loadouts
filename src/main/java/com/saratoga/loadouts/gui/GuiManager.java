@@ -915,6 +915,7 @@ public class GuiManager implements Listener {
         int i = 0;
         for (String slotKey : slots.keySet()) {
             if (i < slotPositions.length && slotPositions[i] == slot) {
+                isNavigating.add(player.getUniqueId());
                 openWeaponSelectMenu(player, slotKey);
                 return;
             }
@@ -928,6 +929,7 @@ public class GuiManager implements Listener {
         int j = 0;
         for (String slotKey : attachmentSlots.keySet()) {
             if (j < attachmentPositions.length && attachmentPositions[j] == slot) {
+                isNavigating.add(player.getUniqueId());
                 openAttachmentSelectMenu(player, slotKey);
                 return;
             }
@@ -980,6 +982,7 @@ public class GuiManager implements Listener {
                 player.sendMessage(config.getMessageComponent("slot-selected", placeholders));
 
                 // Go back to category menu
+                isNavigating.add(player.getUniqueId());
                 openCategoryMenu(player, session.getEditingSlotNumber());
             } else {
                 // Check for custom item
@@ -994,6 +997,7 @@ public class GuiManager implements Listener {
                             "weapon", customItemId);
                     player.sendMessage(config.getMessageComponent("slot-selected", placeholders));
 
+                    isNavigating.add(player.getUniqueId());
                     openCategoryMenu(player, session.getEditingSlotNumber());
                 }
             }
@@ -1055,6 +1059,7 @@ public class GuiManager implements Listener {
                         .append(Component.text(attachmentId, NamedTextColor.YELLOW)));
 
                 // Go back to category menu
+                isNavigating.add(player.getUniqueId());
                 openCategoryMenu(player, session.getEditingSlotNumber());
             }
         }
