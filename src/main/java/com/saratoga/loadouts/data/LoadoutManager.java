@@ -191,6 +191,9 @@ public class LoadoutManager {
             }
         }
 
+        // Full status reset after loadout apply
+        resetPlayerStatus(player);
+
         return true;
     }
 
@@ -221,7 +224,33 @@ public class LoadoutManager {
             }
         }
 
+        // Full status reset after loadout apply
+        resetPlayerStatus(player);
+
         return true;
+    }
+
+    /**
+     * Reset player status to full (health, food, remove effects, extinguish fire)
+     * Called after loadout is applied
+     */
+    private void resetPlayerStatus(Player player) {
+        // Restore to max health
+        org.bukkit.attribute.AttributeInstance healthAttr = player
+                .getAttribute(org.bukkit.attribute.Attribute.MAX_HEALTH);
+        if (healthAttr != null) {
+            player.setHealth(healthAttr.getValue());
+        }
+
+        // Restore food level
+        player.setFoodLevel(20);
+        player.setSaturation(20f);
+
+        // Remove all potion effects
+        player.getActivePotionEffects().forEach(effect -> player.removePotionEffect(effect.getType()));
+
+        // Extinguish fire
+        player.setFireTicks(0);
     }
 
     /**

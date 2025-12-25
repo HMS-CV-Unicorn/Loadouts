@@ -41,88 +41,242 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
             @NotNull String label, @NotNull String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage(config.getMessageComponent("player-only"));
-            return true;
-        }
 
-        if (!player.hasPermission("loadouts.use")) {
-            player.sendMessage(config.getMessageComponent("no-permission"));
-            return true;
-        }
+        // Handle console-only commands requiring player target
+        boolean isConsole = !(sender instanceof Player);
 
-        // Default command (no args) opens main menu in FORCE mode
+        // No args: open main menu for self (player only)
         if (args.length == 0) {
-            guiManager.openMainMenu(player, true); // Force selection - cannot ESC out
+            if (isConsole) {
+                sender.sendMessage(Component.text("Usage: /loadout open <player>", NamedTextColor.RED));
+                return true;
+            }
+            Player player = (Player) sender;
+            if (!player.hasPermission(config.getPermUseMenu())) {
+                player.sendMessage(config.getMessageComponent("no-permission"));
+                return true;
+            }
+            guiManager.openMainMenu(player, true);
             return true;
         }
 
         String subCommand = args[0].toLowerCase();
 
         switch (subCommand) {
-            case "menu" -> guiManager.openMainMenu(player, true); // Force selection
-            case "edit" -> handleEdit(player, args);
-            case "save" -> handleSave(player);
-            case "cancel" -> handleCancel(player);
-            case "give" -> handleGive(player, args);
-            case "list" -> handleList(player);
-            case "delete" -> handleDelete(player, args);
-            case "rename" -> handleRename(player, args);
-            case "reload" -> handleReload(player);
-            case "syncwm" -> handleSyncWm(player);
-            default -> player.sendMessage(config.getMessageComponent("invalid-usage"));
+            case "menu" -> {
+                if (isConsole) {
+                    sender.sendMessage(Component.text("Use: /loadout open <player>", NamedTextColor.RED));
+                    return true;
+                }
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermUseMenu())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                guiManager.openMainMenu(player, true);
+            }
+            case "open" -> handleOpen(sender, args, isConsole);
+            case "edit" -> handleEdit(sender, args, isConsole);
+            case "save" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleSave((Player) sender);
+            }
+            case "cancel" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleCancel((Player) sender);
+            }
+            case "give" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleGive((Player) sender, args);
+            }
+            case "list" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleList((Player) sender);
+            }
+            case "delete" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleDelete((Player) sender, args);
+            }
+            case "rename" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleRename((Player) sender, args);
+            }
+            case "reload" -> handleReload(sender);
+            case "syncwm" -> {
+                if (isConsole) {
+                    sender.sendMessage(config.getMessageComponent("player-only"));
+                    return true;
+                }
+                handleSyncWm((Player) sender);
+            }
+            default -> sender.sendMessage(config.getMessageComponent("invalid-usage"));
         }
 
         return true;
     }
 
     /**
-     * /loadout edit [slotNumber]
-     * /loadout edit global <slotNumber> (admin only - edit global loadout)
+     * /loadout open [player] - Open selection menu for self or target player
      */
-    private void handleEdit(Player player, String[] args) {
-        if (args.length >= 2) {
-            // Check for global edit: /loadout edit global <slot>
-            if (args[1].equalsIgnoreCase("global")) {
-                if (!player.hasPermission("loadouts.admin")) {
-                    player.sendMessage(Component.text("グローバルロードアウトの編集には管理者権限が必要です。", NamedTextColor.RED));
-                    return;
-                }
-                if (args.length < 3) {
-                    player.sendMessage(Component.text("使用法: /loadout edit global <1-5>", NamedTextColor.RED));
-                    return;
-                }
-                try {
-                    int slotNumber = Integer.parseInt(args[2]);
-                    if (slotNumber < 1 || slotNumber > 5) {
-                        player.sendMessage(Component.text("スロット番号は1〜5を指定してください", NamedTextColor.RED));
-                        return;
-                    }
-                    // Start global edit session
-                    guiManager.openCategoryMenuForGlobal(player, slotNumber);
-                    player.sendMessage(
-                            Component.text("グローバルロードアウト スロット " + slotNumber + " を編集中...", NamedTextColor.GOLD));
-                } catch (NumberFormatException e) {
-                    player.sendMessage(Component.text("無効なスロット番号です: " + args[2], NamedTextColor.RED));
-                }
+    private void handleOpen(CommandSender sender, String[] args, boolean isConsole) {
+        if (args.length < 2) {
+            // No target - open for self if player
+            if (isConsole) {
+                sender.sendMessage(Component.text("Usage: /loadout open <player>", NamedTextColor.RED));
                 return;
             }
+            Player player = (Player) sender;
+            if (!player.hasPermission(config.getPermUseMenu())) {
+                player.sendMessage(config.getMessageComponent("no-permission"));
+                return;
+            }
+            guiManager.openMainMenu(player, true);
+            return;
+        }
 
-            // Normal slot number specified
+        // Target player specified - need admin permission
+        if (!isConsole && !((Player) sender).hasPermission(config.getPermAdminOpenOther())) {
+            sender.sendMessage(config.getMessageComponent("no-permission"));
+            return;
+        }
+
+        Player target = plugin.getServer().getPlayer(args[1]);
+        if (target == null) {
+            sender.sendMessage(config.getMessageComponent("player-not-found", Map.of("player", args[1])));
+            return;
+        }
+
+        guiManager.openMainMenu(target, true);
+        sender.sendMessage(config.getMessageComponent("opened-for-player", Map.of("player", target.getName())));
+    }
+
+    /**
+     * /loadout edit [slotNumber] - Edit own loadout
+     * /loadout edit <player> <slotNumber> - Edit other player's loadout (admin)
+     * /loadout edit global <slotNumber> - Edit global loadout (admin)
+     */
+    private void handleEdit(CommandSender sender, String[] args, boolean isConsole) {
+        // Global edit: /loadout edit global <slot>
+        if (args.length >= 2 && args[1].equalsIgnoreCase("global")) {
+            if (isConsole) {
+                sender.sendMessage(config.getMessageComponent("player-only"));
+                return;
+            }
+            Player player = (Player) sender;
+            if (!player.hasPermission(config.getPermEditGlobal())) {
+                player.sendMessage(Component.text("グローバルロードアウトの編集には管理者権限が必要です。", NamedTextColor.RED));
+                return;
+            }
+            if (args.length < 3) {
+                player.sendMessage(Component.text("使用法: /loadout edit global <1-5>", NamedTextColor.RED));
+                return;
+            }
             try {
-                int slotNumber = Integer.parseInt(args[1]);
+                int slotNumber = Integer.parseInt(args[2]);
                 if (slotNumber < 1 || slotNumber > 5) {
                     player.sendMessage(Component.text("スロット番号は1〜5を指定してください", NamedTextColor.RED));
                     return;
                 }
-                guiManager.openCategoryMenu(player, slotNumber);
+                guiManager.openCategoryMenuForGlobal(player, slotNumber);
+                player.sendMessage(Component.text("グローバルロードアウト スロット " + slotNumber + " を編集中...", NamedTextColor.GOLD));
             } catch (NumberFormatException e) {
-                player.sendMessage(Component.text("無効なスロット番号です: " + args[1], NamedTextColor.RED));
+                player.sendMessage(Component.text("無効なスロット番号です: " + args[2], NamedTextColor.RED));
             }
-        } else {
-            // Open slot selection GUI
-            guiManager.openSlotSelectionMenu(player);
+            return;
         }
+
+        // Check if targeting another player: /loadout edit <player> [slot]
+        if (args.length >= 2 && !isConsole) {
+            // Try to parse as slot number first (self edit)
+            try {
+                int slotNumber = Integer.parseInt(args[1]);
+                if (slotNumber >= 1 && slotNumber <= 5) {
+                    Player player = (Player) sender;
+                    if (!player.hasPermission(config.getPermEditLoadout())) {
+                        player.sendMessage(config.getMessageComponent("no-permission"));
+                        return;
+                    }
+                    guiManager.openCategoryMenu(player, slotNumber);
+                    return;
+                }
+            } catch (NumberFormatException e) {
+                // Not a number - treat as player name
+            }
+        }
+
+        // /loadout edit <player> - open slot selection for target player
+        if (args.length == 2) {
+            // Admin targeting another player (slot selection menu)
+            if (!isConsole && !((Player) sender).hasPermission(config.getPermAdminOpenOther())) {
+                sender.sendMessage(config.getMessageComponent("no-permission"));
+                return;
+            }
+            Player target = plugin.getServer().getPlayer(args[1]);
+            if (target == null) {
+                sender.sendMessage(config.getMessageComponent("player-not-found", Map.of("player", args[1])));
+                return;
+            }
+            guiManager.openSlotSelectionMenu(target);
+            sender.sendMessage(Component.text(target.getName() + " の編集スロット選択画面を開きました。", NamedTextColor.GREEN));
+            return;
+        }
+
+        // /loadout edit <player> <slot> - Admin targeting another player with specific
+        // slot
+        if (args.length >= 3) {
+            if (!isConsole && !((Player) sender).hasPermission(config.getPermAdminOpenOther())) {
+                sender.sendMessage(config.getMessageComponent("no-permission"));
+                return;
+            }
+            Player target = plugin.getServer().getPlayer(args[1]);
+            if (target == null) {
+                sender.sendMessage(config.getMessageComponent("player-not-found", Map.of("player", args[1])));
+                return;
+            }
+            try {
+                int slotNumber = Integer.parseInt(args[2]);
+                if (slotNumber < 1 || slotNumber > 5) {
+                    sender.sendMessage(Component.text("スロット番号は1〜5を指定してください", NamedTextColor.RED));
+                    return;
+                }
+                guiManager.openCategoryMenu(target, slotNumber);
+                sender.sendMessage(Component.text(target.getName() + " のスロット " + slotNumber + " を編集開始しました。",
+                        NamedTextColor.GREEN));
+            } catch (NumberFormatException e) {
+                sender.sendMessage(Component.text("無効なスロット番号です: " + args[2], NamedTextColor.RED));
+            }
+            return;
+        }
+
+        // Self edit (player only) - no args
+        if (isConsole) {
+            sender.sendMessage(Component.text("Usage: /loadout edit <player> [slot]", NamedTextColor.RED));
+            return;
+        }
+        Player player = (Player) sender;
+        if (!player.hasPermission(config.getPermEditLoadout())) {
+            player.sendMessage(config.getMessageComponent("no-permission"));
+            return;
+        }
+        guiManager.openSlotSelectionMenu(player);
     }
 
     /**
@@ -375,8 +529,8 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
     /**
      * /loadout reload
      */
-    private void handleReload(Player player) {
-        if (!player.hasPermission("loadouts.admin")) {
+    private void handleReload(CommandSender sender) {
+        if (sender instanceof Player player && !player.hasPermission(config.getPermReload())) {
             player.sendMessage(config.getMessageComponent("no-permission"));
             return;
         }
@@ -385,7 +539,7 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
         plugin.getWmIntegration().scanWeapons();
         loadoutManager.clearAllCaches();
 
-        player.sendMessage(Component.text("設定をリロードしました。", NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("設定をリロードしました。", NamedTextColor.GREEN));
     }
 
     /**

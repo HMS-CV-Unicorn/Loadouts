@@ -165,3 +165,20 @@ messages:
   loadout-list-item: "&7- &e%name% &7(作成: %date%)"
   loadout-list-empty: "&7保存されたロードアウトはありません。"
   confirm-delete: "&c本当に '&e%name%&c' を削除しますか？ もう一度コマンドを実行してください。"
+  player-not-found: "&cプレイヤー '%player%' が見つかりません。"
+  opened-for-player: "&a%player% のロードアウトメニューを開きました。"
+
+# Permission nodes (configurable)
+permissions:
+  # Basic menu access (/loadout, /loadout open)
+  use-menu: "loadouts.user"
+  # Edit own loadouts (/loadout edit)
+  edit-loadout: "loadouts.edit"
+  # Open/edit other players' GUIs (/loadout open <player>, /loadout edit <player>)
+  admin-open-other: "loadouts.admin.open"
+  # Edit global loadouts (/loadout edit global)
+  edit-global: "loadouts.admin.global"
+  # Reload config (/loadout reload)
+  reload: "loadouts.admin.reload"
+  # Rename loadouts (/loadout rename)
+  rename: "loadouts.rename"

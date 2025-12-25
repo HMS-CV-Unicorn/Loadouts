@@ -53,6 +53,14 @@ public class LoadoutsConfig {
     // Messages
     private final Map<String, String> messages = new HashMap<>();
 
+    // Permissions
+    private String permUseMenu;
+    private String permEditLoadout;
+    private String permAdminOpenOther;
+    private String permEditGlobal;
+    private String permReload;
+    private String permRename;
+
     public LoadoutsConfig(Loadouts plugin) {
         this.plugin = plugin;
         reload();
@@ -174,6 +182,14 @@ public class LoadoutsConfig {
                 messages.put(key, msgSection.getString(key, ""));
             }
         }
+
+        // Permissions
+        permUseMenu = config.getString("permissions.use-menu", "loadouts.user");
+        permEditLoadout = config.getString("permissions.edit-loadout", "loadouts.edit");
+        permAdminOpenOther = config.getString("permissions.admin-open-other", "loadouts.admin.open");
+        permEditGlobal = config.getString("permissions.edit-global", "loadouts.admin.global");
+        permReload = config.getString("permissions.reload", "loadouts.admin.reload");
+        permRename = config.getString("permissions.rename", "loadouts.rename");
     }
 
     // Message helper methods
@@ -291,6 +307,31 @@ public class LoadoutsConfig {
 
     public int getItemsPerPage() {
         return itemsPerPage;
+    }
+
+    // Permission getters
+    public String getPermUseMenu() {
+        return permUseMenu;
+    }
+
+    public String getPermEditLoadout() {
+        return permEditLoadout;
+    }
+
+    public String getPermAdminOpenOther() {
+        return permAdminOpenOther;
+    }
+
+    public String getPermEditGlobal() {
+        return permEditGlobal;
+    }
+
+    public String getPermReload() {
+        return permReload;
+    }
+
+    public String getPermRename() {
+        return permRename;
     }
 
     // Inner classes for configuration data
