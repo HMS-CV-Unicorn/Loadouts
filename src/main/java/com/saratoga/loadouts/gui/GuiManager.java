@@ -1215,6 +1215,7 @@ public class GuiManager implements Listener {
         // Check if player has selected a weapon for this slot
         if (session.hasSlot(slotKey)) {
             LoadoutSlot selected = session.getSlot(slotKey);
+            boolean weaponMissing = false;
 
             // Use the actual weapon as the icon
             if (selected.isWmWeapon()) {
@@ -1222,7 +1223,9 @@ public class GuiManager implements Listener {
                 if (weaponItem != null) {
                     item = weaponItem;
                 } else {
-                    item = new ItemStack(slotConfig.icon());
+                    // Weapon no longer exists in WeaponMechanics!
+                    item = new ItemStack(Material.BARRIER);
+                    weaponMissing = true;
                 }
             } else {
                 // Custom item
@@ -1230,32 +1233,50 @@ public class GuiManager implements Listener {
                 if (customConfig != null) {
                     item = new ItemStack(customConfig.material());
                 } else {
-                    item = new ItemStack(slotConfig.icon());
+                    item = new ItemStack(Material.BARRIER);
+                    weaponMissing = true;
                 }
             }
 
             meta = item.getItemMeta();
 
-            // Override display name to show slot + weapon name
-            meta.displayName(slotConfig.getDisplayNameComponent()
-                    .append(Component.text(" - ", NamedTextColor.GRAY))
-                    .append(Component.text(selected.getWeaponTitle(), NamedTextColor.GREEN))
-                    .decoration(TextDecoration.ITALIC, false));
-
-            List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("✓ 選択済み", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
-
-            if (selected.getAmmoAmount() > 0) {
-                lore.add(Component.text("弾薬: " + selected.getAmmoAmount() + "発", NamedTextColor.AQUA)
+            if (weaponMissing) {
+                // Show warning for missing weapon
+                meta.displayName(slotConfig.getDisplayNameComponent()
+                        .append(Component.text(" - ", NamedTextColor.GRAY))
+                        .append(Component.text(selected.getWeaponTitle(), NamedTextColor.RED,
+                                TextDecoration.STRIKETHROUGH))
                         .decoration(TextDecoration.ITALIC, false));
+
+                List<Component> lore = new ArrayList<>();
+                lore.add(Component.text("⚠ 武器が見つかりません", NamedTextColor.RED).decorate(TextDecoration.BOLD)
+                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.empty());
+                lore.add(Component.text("クリックして別の武器を選択してください", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC,
+                        false));
+                meta.lore(lore);
+            } else {
+                // Override display name to show slot + weapon name
+                meta.displayName(slotConfig.getDisplayNameComponent()
+                        .append(Component.text(" - ", NamedTextColor.GRAY))
+                        .append(Component.text(selected.getWeaponTitle(), NamedTextColor.GREEN))
+                        .decoration(TextDecoration.ITALIC, false));
+
+                List<Component> lore = new ArrayList<>();
+                lore.add(Component.text("✓ 選択済み", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+
+                if (selected.getAmmoAmount() > 0) {
+                    lore.add(Component.text("弾薬: " + selected.getAmmoAmount() + "発", NamedTextColor.AQUA)
+                            .decoration(TextDecoration.ITALIC, false));
+                }
+
+                lore.add(Component.empty());
+                lore.add(Component.text("クリックで変更", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+
+                // Add glow effect
+                meta.setEnchantmentGlintOverride(true);
+                meta.lore(lore);
             }
-
-            lore.add(Component.empty());
-            lore.add(Component.text("クリックで変更", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-
-            // Add glow effect
-            meta.setEnchantmentGlintOverride(true);
-            meta.lore(lore);
 
         } else {
             // No selection - use default category icon

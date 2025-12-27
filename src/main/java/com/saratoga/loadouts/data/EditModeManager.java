@@ -48,10 +48,23 @@ public class EditModeManager implements Listener {
     public void startEditMode(Player player) {
         UUID uuid = player.getUniqueId();
 
-        // Backup current inventory
-        inventoryBackups.put(uuid, player.getInventory().getContents().clone());
-        armorBackups.put(uuid, player.getInventory().getArmorContents().clone());
-        offhandBackups.put(uuid, player.getInventory().getItemInOffHand().clone());
+        // Deep clone current inventory (each ItemStack must be cloned individually)
+        ItemStack[] contents = player.getInventory().getContents();
+        ItemStack[] clonedContents = new ItemStack[contents.length];
+        for (int i = 0; i < contents.length; i++) {
+            clonedContents[i] = contents[i] != null ? contents[i].clone() : null;
+        }
+        inventoryBackups.put(uuid, clonedContents);
+
+        ItemStack[] armor = player.getInventory().getArmorContents();
+        ItemStack[] clonedArmor = new ItemStack[armor.length];
+        for (int i = 0; i < armor.length; i++) {
+            clonedArmor[i] = armor[i] != null ? armor[i].clone() : null;
+        }
+        armorBackups.put(uuid, clonedArmor);
+
+        ItemStack offhand = player.getInventory().getItemInOffHand();
+        offhandBackups.put(uuid, offhand.getType().isAir() ? null : offhand.clone());
 
         // Clear inventory
         player.getInventory().clear();
@@ -61,7 +74,7 @@ public class EditModeManager implements Listener {
         // Add to edit mode list
         playersInEditMode.add(uuid);
 
-        plugin.getLogger().fine("Player " + player.getName() + " entered edit mode");
+        plugin.getLogger().info("Player " + player.getName() + " entered edit mode (inventory backed up)");
     }
 
     /**
