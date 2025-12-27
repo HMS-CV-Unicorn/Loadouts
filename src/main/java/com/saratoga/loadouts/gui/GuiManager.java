@@ -645,7 +645,6 @@ public class GuiManager implements Listener {
     }
 
     // ==================== Item Granting ====================
-
     /**
      * Grant selected items to player with weapons and ammo.
      * Starts edit mode with inventory backup.
@@ -654,6 +653,12 @@ public class GuiManager implements Listener {
         LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
         if (session == null || session.getSelectedSlots().isEmpty()) {
             player.sendMessage(config.getMessageComponent("invalid-usage"));
+            return;
+        }
+
+        // Prevent double execution - only start edit mode if not already in it
+        if (plugin.getEditModeManager().isInEditMode(player)) {
+            plugin.getLogger().warning("[DEBUG] grantSelectedItems called but player already in edit mode - skipping");
             return;
         }
 

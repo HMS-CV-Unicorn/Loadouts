@@ -48,6 +48,13 @@ public class EditModeManager implements Listener {
     public void startEditMode(Player player) {
         UUID uuid = player.getUniqueId();
 
+        // CRITICAL: Prevent double call - never overwrite existing backup!
+        if (playersInEditMode.contains(uuid)) {
+            plugin.getLogger().warning(
+                    "[BUG] startEditMode called twice for " + player.getName() + " - ignoring to protect backup!");
+            return;
+        }
+
         // Deep clone current inventory (each ItemStack must be cloned individually)
         ItemStack[] contents = player.getInventory().getContents();
         ItemStack[] clonedContents = new ItemStack[contents.length];
@@ -84,13 +91,23 @@ public class EditModeManager implements Listener {
     public void endEditMode(Player player, boolean saveSuccessful) {
         UUID uuid = player.getUniqueId();
 
+        plugin.getLogger()
+                .info("[DEBUG] endEditMode called for " + player.getName() + ", saveSuccessful=" + saveSuccessful);
+
         if (!playersInEditMode.contains(uuid)) {
+            plugin.getLogger().warning("[DEBUG] Player " + player.getName() + " not in edit mode list!");
             return;
         }
 
-        // Clear current (edit mode) inventory
+        // Check if backup exists
+        boolean hasBackup = inventoryBackups.containsKey(uuid);
+        plugin.getLogger().info("[DEBUG] Backup exists: " + hasBackup);
+
+        // Clear current (edit mode) inventory completely
         player.getInventory().clear();
         player.getInventory().setArmorContents(null);
+        player.getInventory().setItemInOffHand(null);
+        plugin.getLogger().info("[DEBUG] Cleared edit mode inventory");
 
         // Restore backed up inventory
         restoreInventory(player);
@@ -102,7 +119,7 @@ public class EditModeManager implements Listener {
             player.sendMessage(Component.text("ロードアウトを保存しました。元のインベントリを復元しました。", NamedTextColor.GREEN));
         }
 
-        plugin.getLogger().fine("Player " + player.getName() + " exited edit mode");
+        plugin.getLogger().info("[DEBUG] " + player.getName() + " exited edit mode");
     }
 
     /**
@@ -142,9 +159,25 @@ public class EditModeManager implements Listener {
         ItemStack[] armor = armorBackups.remove(uuid);
         ItemStack offhand = offhandBackups.remove(uuid);
 
+        plugin.getLogger()
+                .info("[DEBUG] restoreInventory: contents="
+                        + (contents != null ? "array[" + contents.length + "]" : "null") +
+                        ", armor=" + (armor != null ? "array[" + armor.length + "]" : "null") +
+                        ", offhand=" + (offhand != null ? offhand.getType().name() : "null"));
+
         if (contents != null) {
+            // Count non-null items
+            int itemCount = 0;
+            for (ItemStack item : contents) {
+                if (item != null && !item.getType().isAir())
+                    itemCount++;
+            }
+            plugin.getLogger().info("[DEBUG] Restoring " + itemCount + " items to inventory");
             player.getInventory().setContents(contents);
+        } else {
+            plugin.getLogger().warning("[DEBUG] No contents backup found for " + player.getName() + "!");
         }
+
         if (armor != null) {
             player.getInventory().setArmorContents(armor);
         }
@@ -153,6 +186,7 @@ public class EditModeManager implements Listener {
         }
 
         player.updateInventory();
+        plugin.getLogger().info("[DEBUG] Inventory restored and updated for " + player.getName());
     }
 
     /**
