@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../.."
+		},
+		{
+			"path": "../../../../../../../../misc"
+		},
+		{
+			"path": "../../../../../../../../WM_configs_maker"
+		}
+	],
+	"settings": {
+		"java.configuration.updateBuildConfiguration": "automatic"
+	}
+}

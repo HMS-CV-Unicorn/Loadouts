@@ -501,6 +501,16 @@ public class GuiManager implements Listener {
             inv.setItem(50, createNavigationItem(Material.ARROW, "&e次のページ →"));
         }
 
+        // None button (clear selection) at slot 53
+        ItemStack noneItem = new ItemStack(Material.BARRIER);
+        ItemMeta noneMeta = noneItem.getItemMeta();
+        noneMeta.displayName(Component.text("選択なし", NamedTextColor.RED)
+                .decorate(TextDecoration.BOLD).decoration(TextDecoration.ITALIC, false));
+        noneMeta.lore(List.of(
+                Component.text("クリックして選択を解除", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        noneItem.setItemMeta(noneMeta);
+        inv.setItem(53, noneItem);
+
         // Fill remaining bottom row
         for (int i = 45; i < 54; i++) {
             if (inv.getItem(i) == null) {
@@ -602,6 +612,16 @@ public class GuiManager implements Listener {
             inv.setItem(50, createNavigationItem(Material.ARROW, "&e次のページ →"));
         }
 
+        // None button (clear selection) at slot 53
+        ItemStack noneItem = new ItemStack(Material.BARRIER);
+        ItemMeta noneMeta = noneItem.getItemMeta();
+        noneMeta.displayName(Component.text("選択なし", NamedTextColor.RED)
+                .decorate(TextDecoration.BOLD).decoration(TextDecoration.ITALIC, false));
+        noneMeta.lore(List.of(
+                Component.text("クリックして選択を解除", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)));
+        noneItem.setItemMeta(noneMeta);
+        inv.setItem(53, noneItem);
+
         // Fill remaining bottom row
         for (int i = 45; i < 54; i++) {
             if (inv.getItem(i) == null) {
@@ -659,6 +679,16 @@ public class GuiManager implements Listener {
         // Prevent double execution - only start edit mode if not already in it
         if (plugin.getEditModeManager().isInEditMode(player)) {
             plugin.getLogger().warning("[DEBUG] grantSelectedItems called but player already in edit mode - skipping");
+            return;
+        }
+
+        // === Weapon Validation: Require at least one weapon (primary or secondary) ===
+        boolean hasPrimaryWeapon = session.hasSlot("primary");
+        boolean hasSecondaryWeapon = session.hasSlot("secondary");
+        if (!hasPrimaryWeapon && !hasSecondaryWeapon) {
+            player.sendMessage(Component.text("エラー: 最低でも1つの武器を選択してください。", NamedTextColor.RED));
+            player.sendMessage(Component.text("メインウェポンまたはサブウェポンを設定してから保存してください。", NamedTextColor.YELLOW));
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
             return;
         }
 
@@ -973,6 +1003,17 @@ public class GuiManager implements Listener {
             return;
         }
 
+        // None button - clear selection
+        if (slot == 53) {
+            String slotType = session.getCurrentSlotType();
+            session.removeSlot(slotType);
+            player.sendMessage(
+                    Component.text(config.getSlot(slotType).displayName() + " の選択を解除しました", NamedTextColor.YELLOW));
+            isNavigating.add(player.getUniqueId());
+            openCategoryMenu(player, session.getEditingSlotNumber());
+            return;
+        }
+
         // Weapon selection (slots 0-44)
         if (slot >= 0 && slot < 45) {
             String weaponTitle = wmIntegration.getWeaponTitle(clicked);
@@ -1039,7 +1080,18 @@ public class GuiManager implements Listener {
             return;
         }
 
-        // Skip bottom row navigation
+        // None button - clear attachment selection
+        if (slot == 53) {
+            String attachmentSlotKey = session.getCurrentAttachmentSlot();
+            session.removeAttachment(attachmentSlotKey);
+            player.sendMessage(Component.text(config.getAttachmentSlot(attachmentSlotKey).displayName() + " の選択を解除しました",
+                    NamedTextColor.YELLOW));
+            isNavigating.add(player.getUniqueId());
+            openCategoryMenu(player, session.getEditingSlotNumber());
+            return;
+        }
+
+        // Skip other bottom row navigation
         if (slot >= 45) {
             return;
         }
@@ -1284,11 +1336,13 @@ public class GuiManager implements Listener {
             }
 
         } else {
-            // No selection - use default category icon
+            // No selection - use category icon (sword, bow, etc.)
             item = new ItemStack(slotConfig.icon());
             meta = item.getItemMeta();
 
             meta.displayName(slotConfig.getDisplayNameComponent()
+                    .append(Component.text(" - ", NamedTextColor.GRAY))
+                    .append(Component.text("未選択", NamedTextColor.DARK_GRAY))
                     .decoration(TextDecoration.ITALIC, false));
 
             List<Component> lore = new ArrayList<>();

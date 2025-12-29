@@ -143,11 +143,16 @@ public class LoadoutManager {
 
         // Get edit session slots and attachments if any
         if (session != null) {
-            // Copy weapon slots
+            // IMPORTANT: Clear existing slots and attachments first to handle removed
+            // selections
+            loadout.getSlots().clear();
+            loadout.getAttachments().clear();
+
+            // Copy weapon slots from session
             for (LoadoutSlot slot : session.getSelectedSlots().values()) {
                 loadout.setSlot(slot.getSlotType(), slot);
             }
-            // Copy attachments
+            // Copy attachments from session
             for (Map.Entry<String, String> entry : session.getSelectedAttachments().entrySet()) {
                 loadout.setAttachment(entry.getKey(), entry.getValue());
             }
@@ -455,6 +460,10 @@ public class LoadoutManager {
 
         public boolean hasAttachment(String slotKey) {
             return selectedAttachments.containsKey(slotKey);
+        }
+
+        public void removeAttachment(String slotKey) {
+            selectedAttachments.remove(slotKey);
         }
 
         /**
