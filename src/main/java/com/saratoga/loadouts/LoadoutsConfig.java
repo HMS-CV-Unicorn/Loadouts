@@ -56,10 +56,16 @@ public class LoadoutsConfig {
     // Permissions
     private String permUseMenu;
     private String permEditLoadout;
+    private String permSaveLoadout;
+    private String permCancelLoadout;
+    private String permGiveLoadout;
+    private String permListLoadout;
+    private String permDeleteLoadout;
+    private String permRename;
     private String permAdminOpenOther;
     private String permEditGlobal;
     private String permReload;
-    private String permRename;
+    private String permSyncwm;
 
     public LoadoutsConfig(Loadouts plugin) {
         this.plugin = plugin;
@@ -186,10 +192,16 @@ public class LoadoutsConfig {
         // Permissions
         permUseMenu = config.getString("permissions.use-menu", "loadouts.user");
         permEditLoadout = config.getString("permissions.edit-loadout", "loadouts.edit");
+        permSaveLoadout = config.getString("permissions.save-loadout", "loadouts.save");
+        permCancelLoadout = config.getString("permissions.cancel-loadout", "loadouts.cancel");
+        permGiveLoadout = config.getString("permissions.give-loadout", "loadouts.give");
+        permListLoadout = config.getString("permissions.list-loadout", "loadouts.list");
+        permDeleteLoadout = config.getString("permissions.delete-loadout", "loadouts.delete");
+        permRename = config.getString("permissions.rename", "loadouts.rename");
         permAdminOpenOther = config.getString("permissions.admin-open-other", "loadouts.admin.open");
         permEditGlobal = config.getString("permissions.edit-global", "loadouts.admin.global");
         permReload = config.getString("permissions.reload", "loadouts.admin.reload");
-        permRename = config.getString("permissions.rename", "loadouts.rename");
+        permSyncwm = config.getString("permissions.syncwm", "loadouts.admin.syncwm");
     }
 
     // Message helper methods
@@ -318,6 +330,30 @@ public class LoadoutsConfig {
         return permEditLoadout;
     }
 
+    public String getPermSaveLoadout() {
+        return permSaveLoadout;
+    }
+
+    public String getPermCancelLoadout() {
+        return permCancelLoadout;
+    }
+
+    public String getPermGiveLoadout() {
+        return permGiveLoadout;
+    }
+
+    public String getPermListLoadout() {
+        return permListLoadout;
+    }
+
+    public String getPermDeleteLoadout() {
+        return permDeleteLoadout;
+    }
+
+    public String getPermRename() {
+        return permRename;
+    }
+
     public String getPermAdminOpenOther() {
         return permAdminOpenOther;
     }
@@ -330,8 +366,8 @@ public class LoadoutsConfig {
         return permReload;
     }
 
-    public String getPermRename() {
-        return permRename;
+    public String getPermSyncwm() {
+        return permSyncwm;
     }
 
     // Inner classes for configuration data

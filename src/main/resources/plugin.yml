@@ -17,8 +17,9 @@ commands:
       - kit
 
 permissions:
-  loadouts.use:
-    description: ロードアウト機能を使用する
+  # User permissions (default: true - all players can use)
+  loadouts.user:
+    description: ロードアウトメニューを開く
     default: true
   loadouts.edit:
     description: ロードアウトを編集する
@@ -26,12 +27,34 @@ permissions:
   loadouts.save:
     description: ロードアウトを保存する
     default: true
+  loadouts.cancel:
+    description: ロードアウト編集をキャンセルする
+    default: true
   loadouts.give:
     description: ロードアウトを受け取る
+    default: true
+  loadouts.list:
+    description: ロードアウト一覧を表示する
     default: true
   loadouts.delete:
     description: ロードアウトを削除する
     default: true
-  loadouts.admin:
-    description: 管理者権限（他プレイヤーのロードアウト管理）
+  loadouts.rename:
+    description: ロードアウト名を変更する
+    default: true
+  # Admin permissions (default: op - only operators)
+  loadouts.admin.open:
+    description: 他プレイヤーのロードアウト画面を開く
+    default: op
+  loadouts.admin.global:
+    description: グローバルロードアウトを編集する
+    default: op
+  loadouts.admin.reload:
+    description: 設定をリロードする
+    default: op
+  loadouts.admin.syncwm:
+    description: WeaponMechanicsと同期する
+    default: op
+  loadouts.admin.give:
+    description: 管理者用Give権限（configで設定可）
     default: op

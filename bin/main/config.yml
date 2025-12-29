@@ -169,16 +169,30 @@ messages:
   opened-for-player: "&a%player% のロードアウトメニューを開きました。"
 
 # Permission nodes (configurable)
+# Admin commands are hidden from TAB completion for non-admins
 permissions:
-  # Basic menu access (/loadout, /loadout open)
+  # Basic menu access (/loadout, /loadout open, /loadout menu)
   use-menu: "loadouts.user"
   # Edit own loadouts (/loadout edit)
   edit-loadout: "loadouts.edit"
+  # Save loadout (/loadout save)
+  save-loadout: "loadouts.save"
+  # Cancel edit (/loadout cancel)
+  cancel-loadout: "loadouts.cancel"
+  # Give loadout to self (/loadout give)
+  give-loadout: "loadouts.give"
+  # List own loadouts (/loadout list)
+  list-loadout: "loadouts.list"
+  # Delete own loadouts (/loadout delete)
+  delete-loadout: "loadouts.delete"
+  # Rename loadouts (/loadout rename)
+  rename: "loadouts.rename"
+  # === Admin commands (hidden from TAB for non-admins) ===
   # Open/edit other players' GUIs (/loadout open <player>, /loadout edit <player>)
   admin-open-other: "loadouts.admin.open"
   # Edit global loadouts (/loadout edit global)
   edit-global: "loadouts.admin.global"
   # Reload config (/loadout reload)
   reload: "loadouts.admin.reload"
-  # Rename loadouts (/loadout rename)
-  rename: "loadouts.rename"
+  # Sync WM (/loadout syncwm)
+  syncwm: "loadouts.admin.syncwm"

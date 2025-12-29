@@ -82,50 +82,81 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(config.getMessageComponent("player-only"));
                     return true;
                 }
-                handleSave((Player) sender);
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermSaveLoadout())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                handleSave(player);
             }
             case "cancel" -> {
                 if (isConsole) {
                     sender.sendMessage(config.getMessageComponent("player-only"));
                     return true;
                 }
-                handleCancel((Player) sender);
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermCancelLoadout())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                handleCancel(player);
             }
             case "give" -> {
                 if (isConsole) {
                     sender.sendMessage(config.getMessageComponent("player-only"));
                     return true;
                 }
-                handleGive((Player) sender, args);
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermGiveLoadout())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                handleGive(player, args);
             }
             case "list" -> {
                 if (isConsole) {
                     sender.sendMessage(config.getMessageComponent("player-only"));
                     return true;
                 }
-                handleList((Player) sender);
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermListLoadout())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                handleList(player);
             }
             case "delete" -> {
                 if (isConsole) {
                     sender.sendMessage(config.getMessageComponent("player-only"));
                     return true;
                 }
-                handleDelete((Player) sender, args);
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermDeleteLoadout())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                handleDelete(player, args);
             }
             case "rename" -> {
                 if (isConsole) {
                     sender.sendMessage(config.getMessageComponent("player-only"));
                     return true;
                 }
-                handleRename((Player) sender, args);
+                Player player = (Player) sender;
+                if (!player.hasPermission(config.getPermRename())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
+                    return true;
+                }
+                handleRename(player, args);
             }
             case "reload" -> handleReload(sender);
             case "syncwm" -> {
-                if (isConsole) {
-                    sender.sendMessage(config.getMessageComponent("player-only"));
+                // Admin command - check permission
+                if (sender instanceof Player player && !player.hasPermission(config.getPermSyncwm())) {
+                    player.sendMessage(config.getMessageComponent("no-permission"));
                     return true;
                 }
-                handleSyncWm((Player) sender);
+                handleSyncWm(sender);
             }
             default -> sender.sendMessage(config.getMessageComponent("invalid-usage"));
         }
@@ -546,13 +577,8 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
      * /loadout syncwm
      * Re-sync weapon and attachment list from WeaponMechanics
      */
-    private void handleSyncWm(Player player) {
-        if (!player.hasPermission("loadouts.admin")) {
-            player.sendMessage(config.getMessageComponent("no-permission"));
-            return;
-        }
-
-        player.sendMessage(Component.text("WeaponMechanicsから武器・アタッチメントリストを再取得中...", NamedTextColor.YELLOW));
+    private void handleSyncWm(CommandSender sender) {
+        sender.sendMessage(Component.text("WeaponMechanicsから武器・アタッチメントリストを再取得中...", NamedTextColor.YELLOW));
 
         // Re-scan weapons and attachments
         plugin.getWmIntegration().scanWeapons();
@@ -561,7 +587,7 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
         int weaponCount = plugin.getWmIntegration().getTotalWeaponCount();
         int attachmentCount = plugin.getWmIntegration().getTotalAttachmentCount();
 
-        player.sendMessage(Component.text("同期完了: " + weaponCount + "個の武器、" + attachmentCount + "個のアタッチメント",
+        sender.sendMessage(Component.text("同期完了: " + weaponCount + "個の武器、" + attachmentCount + "個のアタッチメント",
                 NamedTextColor.GREEN));
 
         // Log category breakdown
@@ -574,13 +600,55 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
             @NotNull String alias, @NotNull String[] args) {
-        if (!(sender instanceof Player)) {
+        if (!(sender instanceof Player player)) {
+            // Console gets all commands
+            if (args.length == 1) {
+                return filterStartsWith(args[0],
+                        Arrays.asList("open", "edit", "reload", "syncwm"));
+            }
             return Collections.emptyList();
         }
 
         if (args.length == 1) {
-            return filterStartsWith(args[0],
-                    Arrays.asList("menu", "edit", "save", "cancel", "give", "list", "delete", "reload", "syncwm"));
+            // Build subcommand list based on permissions
+            List<String> available = new ArrayList<>();
+
+            // User commands - only show if player has permission
+            if (player.hasPermission(config.getPermUseMenu())) {
+                available.add("menu");
+                available.add("open");
+            }
+            if (player.hasPermission(config.getPermEditLoadout())) {
+                available.add("edit");
+            }
+            if (player.hasPermission(config.getPermSaveLoadout())) {
+                available.add("save");
+            }
+            if (player.hasPermission(config.getPermCancelLoadout())) {
+                available.add("cancel");
+            }
+            if (player.hasPermission(config.getPermGiveLoadout())) {
+                available.add("give");
+            }
+            if (player.hasPermission(config.getPermListLoadout())) {
+                available.add("list");
+            }
+            if (player.hasPermission(config.getPermDeleteLoadout())) {
+                available.add("delete");
+            }
+            if (player.hasPermission(config.getPermRename())) {
+                available.add("rename");
+            }
+
+            // Admin commands - hidden from non-admins
+            if (player.hasPermission(config.getPermReload())) {
+                available.add("reload");
+            }
+            if (player.hasPermission(config.getPermSyncwm())) {
+                available.add("syncwm");
+            }
+
+            return filterStartsWith(args[0], available);
         }
 
         if (args.length == 2) {
