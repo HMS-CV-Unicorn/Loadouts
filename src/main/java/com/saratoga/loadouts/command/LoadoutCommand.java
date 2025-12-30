@@ -99,7 +99,8 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
                     player.sendMessage(config.getMessageComponent("no-permission"));
                     return true;
                 }
-                handleCancel(player);
+                boolean silent = args.length >= 2 && args[1].equalsIgnoreCase("-s");
+                handleCancel(player, silent);
             }
             case "give" -> {
                 if (isConsole) {
@@ -353,13 +354,19 @@ public class LoadoutCommand implements CommandExecutor, TabCompleter {
     }
 
     /**
-     * /loadout cancel
+     * /loadout cancel [-s]
      * Cancels edit mode and restores original inventory
+     * 
+     * @param silent If true, silently does nothing when not in edit mode (for
+     *               preventive calls)
      */
-    private void handleCancel(Player player) {
+    private void handleCancel(Player player, boolean silent) {
         if (!plugin.getEditModeManager().isInEditMode(player)) {
-            player.sendMessage(Component.text("編集モード中ではありません。",
-                    NamedTextColor.RED));
+            // Silent mode: don't show error message
+            if (!silent) {
+                player.sendMessage(Component.text("編集モード中ではありません。",
+                        NamedTextColor.RED));
+            }
             return;
         }
 
