@@ -48,6 +48,10 @@ public class GuiManager implements Listener {
     // Track players waiting for chat input to rename loadout
     private final Set<UUID> awaitingRename = new HashSet<>();
 
+    // Cooldown for menu reopens to prevent rapid loop from TP etc.
+    private final Map<UUID, Long> lastMenuOpen = new HashMap<>();
+    private static final long MENU_REOPEN_COOLDOWN_MS = 500;
+
     // Max loadout slots
     private static final int MAX_SLOTS = 5;
 
@@ -1177,19 +1181,24 @@ public class GuiManager implements Listener {
         }
 
         // If this is the loadout selection menu and player is in force-selection mode,
-        // reopen it
+        // reopen it (with cooldown to prevent rapid loops from TP etc.)
         if (isLoadoutSelectionMenu && isInForceMode) {
-            plugin.getLogger().info("[DEBUG]   -> Scheduling menu reopen for " + player.getName());
+            long now = System.currentTimeMillis();
+            Long lastOpen = lastMenuOpen.get(playerUUID);
+
+            // Check cooldown to prevent rapid reopening loop
+            if (lastOpen != null && (now - lastOpen) < MENU_REOPEN_COOLDOWN_MS) {
+                // Too soon - just remove from force mode and don't reopen
+                selectingLoadoutPlayers.remove(playerUUID);
+                return;
+            }
+
             // Use scheduler to reopen 1 tick later (cannot open inventory during close
             // event)
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 if (player.isOnline() && selectingLoadoutPlayers.contains(playerUUID)) {
-                    plugin.getLogger().info("[DEBUG]   -> Reopening menu for " + player.getName());
-                    player.sendMessage(Component.text("ロードアウトを選択してください！", NamedTextColor.RED));
-                    openMainMenu(player, true); // Reopen in force mode
-                } else {
-                    plugin.getLogger().info("[DEBUG]   -> Player " + player.getName()
-                            + " no longer needs reopen (offline or completed)");
+                    lastMenuOpen.put(playerUUID, System.currentTimeMillis());
+                    openMainMenu(player, true); // Reopen in force mode (silently)
                 }
             }, 1L);
         }
