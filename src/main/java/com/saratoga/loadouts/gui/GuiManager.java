@@ -150,21 +150,31 @@ public class GuiManager implements Listener {
 
     /**
      * Create a loadout slot button item (for apply menu)
+     * Uses the main weapon as icon and shows equipment list in lore.
      * 
      * @param isGlobal true if this is a global loadout slot
      */
     private ItemStack createApplySlotItem(int slotNumber, Loadout loadout, boolean isGlobal) {
         boolean hasLoadout = loadout != null && loadout.hasFinalItems();
-        Material material;
-        if (isGlobal) {
-            material = hasLoadout ? Material.ORANGE_STAINED_GLASS_PANE : Material.LIGHT_GRAY_STAINED_GLASS_PANE;
+
+        ItemStack item;
+        ItemMeta meta;
+
+        if (hasLoadout) {
+            // Try to use main weapon as icon
+            item = getLoadoutIconItem(loadout);
+            if (item == null) {
+                // Fallback to glass pane
+                Material material = isGlobal ? Material.ORANGE_STAINED_GLASS_PANE : Material.LIME_STAINED_GLASS_PANE;
+                item = new ItemStack(material);
+            }
         } else {
-            material = hasLoadout ? Material.LIME_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
+            // Empty slot - use glass pane
+            Material material = isGlobal ? Material.LIGHT_GRAY_STAINED_GLASS_PANE : Material.GRAY_STAINED_GLASS_PANE;
+            item = new ItemStack(material);
         }
 
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-
+        meta = item.getItemMeta();
         NamedTextColor activeColor = isGlobal ? NamedTextColor.GOLD : NamedTextColor.GREEN;
 
         // Use custom display name if set, otherwise default format
@@ -185,13 +195,8 @@ public class GuiManager implements Listener {
 
         List<Component> lore = new ArrayList<>();
         if (hasLoadout) {
-            if (isGlobal) {
-                lore.add(Component.text("スターターキット", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-            } else {
-                lore.add(Component.text("保存済み", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
-            }
-            lore.add(Component.empty());
-            lore.add(Component.text("クリックで装備", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            // Build equipment list lore
+            lore.addAll(buildLoadoutLore(loadout, isGlobal));
         } else {
             if (isGlobal) {
                 lore.add(Component.text("未設定", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
@@ -231,12 +236,29 @@ public class GuiManager implements Listener {
         openGuis.put(player.getUniqueId(), GuiType.SLOT_SELECT);
     }
 
+    /**
+     * Create a loadout slot button item (for edit menu)
+     * Uses the main weapon as icon and shows equipment list in lore.
+     */
     private ItemStack createEditSlotItem(int slotNumber, Loadout loadout) {
         boolean hasLoadout = loadout != null && loadout.hasFinalItems();
-        Material material = hasLoadout ? Material.WRITTEN_BOOK : Material.BOOK;
 
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
+        ItemStack item;
+        ItemMeta meta;
+
+        if (hasLoadout) {
+            // Try to use main weapon as icon
+            item = getLoadoutIconItem(loadout);
+            if (item == null) {
+                // Fallback to book
+                item = new ItemStack(Material.WRITTEN_BOOK);
+            }
+        } else {
+            // Empty slot - use book
+            item = new ItemStack(Material.BOOK);
+        }
+
+        meta = item.getItemMeta();
 
         meta.displayName(Component.text("スロット " + slotNumber + " を編集",
                 hasLoadout ? NamedTextColor.GREEN : NamedTextColor.WHITE)
@@ -245,12 +267,16 @@ public class GuiManager implements Listener {
 
         List<Component> lore = new ArrayList<>();
         if (hasLoadout) {
-            lore.add(Component.text("既存のロードアウトを上書きします", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            // Build equipment list lore
+            lore.addAll(buildLoadoutLore(loadout, false));
+            lore.add(Component.empty());
+            lore.add(Component.text("クリックして編集開始", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.text("（既存データを上書き）", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
         } else {
             lore.add(Component.text("新規作成", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+            lore.add(Component.empty());
+            lore.add(Component.text("クリックして編集開始", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
         }
-        lore.add(Component.empty());
-        lore.add(Component.text("クリックして編集開始", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
 
         meta.lore(lore);
         item.setItemMeta(meta);
@@ -1271,6 +1297,119 @@ public class GuiManager implements Listener {
     }
 
     // ==================== Helper Methods ====================
+
+    /**
+     * Get the main weapon item to use as loadout icon.
+     * Tries primary slot first, then secondary, otherwise returns null.
+     */
+    private ItemStack getLoadoutIconItem(Loadout loadout) {
+        if (loadout == null || loadout.getSlots().isEmpty()) {
+            return null;
+        }
+
+        // Try primary weapon first
+        LoadoutSlot primarySlot = loadout.getSlot("primary");
+        if (primarySlot != null && primarySlot.isWmWeapon()) {
+            ItemStack weapon = wmIntegration.generateWeapon(primarySlot.getWeaponTitle());
+            if (weapon != null) {
+                return weapon.clone();
+            }
+        }
+
+        // Try secondary weapon
+        LoadoutSlot secondarySlot = loadout.getSlot("secondary");
+        if (secondarySlot != null && secondarySlot.isWmWeapon()) {
+            ItemStack weapon = wmIntegration.generateWeapon(secondarySlot.getWeaponTitle());
+            if (weapon != null) {
+                return weapon.clone();
+            }
+        }
+
+        // Try any available weapon slot
+        for (LoadoutSlot slot : loadout.getSlots().values()) {
+            if (slot.isWmWeapon()) {
+                ItemStack weapon = wmIntegration.generateWeapon(slot.getWeaponTitle());
+                if (weapon != null) {
+                    return weapon.clone();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Build lore list showing loadout equipment contents.
+     * 
+     * @param loadout  The loadout to show contents of
+     * @param isGlobal Whether this is a global/starter loadout
+     * @return List of lore components
+     */
+    private List<Component> buildLoadoutLore(Loadout loadout, boolean isGlobal) {
+        List<Component> lore = new ArrayList<>();
+
+        if (loadout == null || loadout.getSlots().isEmpty()) {
+            lore.add(Component.text("データなし", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+            return lore;
+        }
+
+        // Header
+        if (isGlobal) {
+            lore.add(Component.text("━━ スターターキット ━━", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
+        } else {
+            lore.add(Component.text("━━━ 装備内容 ━━━", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        }
+
+        // Weapons
+        for (Map.Entry<String, LoadoutSlot> entry : loadout.getSlots().entrySet()) {
+            LoadoutSlot slot = entry.getValue();
+            String slotType = entry.getKey();
+
+            // Get display name for slot type
+            String slotLabel = getSlotDisplayLabel(slotType);
+            String weaponName = slot.getWeaponTitle();
+
+            NamedTextColor labelColor = NamedTextColor.AQUA;
+            NamedTextColor valueColor = NamedTextColor.WHITE;
+
+            lore.add(Component.text(slotLabel + ": ", labelColor)
+                    .append(Component.text(weaponName, valueColor))
+                    .decoration(TextDecoration.ITALIC, false));
+        }
+
+        // Attachments
+        if (loadout.hasAttachments()) {
+            lore.add(Component.empty());
+            lore.add(Component.text("━━ アタッチメント ━━", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+
+            for (Map.Entry<String, String> entry : loadout.getAttachments().entrySet()) {
+                String attachmentId = entry.getValue();
+                lore.add(Component.text("  • " + attachmentId, NamedTextColor.LIGHT_PURPLE)
+                        .decoration(TextDecoration.ITALIC, false));
+            }
+        }
+
+        // Footer divider and action
+        lore.add(Component.text("━━━━━━━━━━━━━", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("クリックで装備", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+
+        return lore;
+    }
+
+    /**
+     * Get display label for a slot type
+     */
+    private String getSlotDisplayLabel(String slotType) {
+        return switch (slotType) {
+            case "primary" -> "🔫 メイン";
+            case "secondary" -> "🔫 サブ";
+            case "melee" -> "🗡 近接";
+            case "throwable" -> "💣 投擲";
+            case "utility" -> "🔧 ユーティリティ";
+            case "tactical" -> "💉 タクティカル";
+            default -> slotType;
+        };
+    }
 
     private ItemStack createSlotIcon(String slotKey, LoadoutsConfig.SlotConfig slotConfig,
             LoadoutManager.LoadoutEditSession session) {
