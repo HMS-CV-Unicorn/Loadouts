@@ -1021,6 +1021,7 @@ public class GuiManager implements Listener {
 
         if (slot == 48 && session.getCurrentPage() > 0) {
             // Previous page
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed during page change
             session.setCurrentPage(session.getCurrentPage() - 1);
             updateWeaponSelectMenu(player, session);
             return;
@@ -1028,6 +1029,7 @@ public class GuiManager implements Listener {
 
         if (slot == 50) {
             // Next page
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed during page change
             session.setCurrentPage(session.getCurrentPage() + 1);
             updateWeaponSelectMenu(player, session);
             return;
@@ -1098,6 +1100,7 @@ public class GuiManager implements Listener {
 
         // Previous page
         if (slot == 48 && session.getCurrentPage() > 0) {
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed during page change
             session.setCurrentPage(session.getCurrentPage() - 1);
             updateAttachmentSelectMenu(player, session);
             return;
@@ -1105,6 +1108,7 @@ public class GuiManager implements Listener {
 
         // Next page
         if (slot == 50) {
+            isNavigating.add(player.getUniqueId()); // Prevent ESC auto-proceed during page change
             session.setCurrentPage(session.getCurrentPage() + 1);
             updateAttachmentSelectMenu(player, session);
             return;
@@ -1641,7 +1645,7 @@ public class GuiManager implements Listener {
 
             // === PROCEED BUTTON LORE (editable) ===
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("選択済み: " + session.getSelectedSlots().size() + " スロット",
+            lore.add(Component.text("選択済み: スロット " + session.getEditingSlotNumber(),
                     NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
             lore.add(Component.empty());
             lore.add(Component.text("クリックしてアイテムを受け取ります。", NamedTextColor.GRAY)
