@@ -359,6 +359,8 @@ public class LoadoutManager {
         private String currentSlotType; // Current weapon category slot being selected
         private String currentAttachmentSlot; // Current attachment slot being selected
         private int currentPage = 0; // Pagination for weapon selection
+        private String currentWeaponCategory; // Current weapon category being browsed (e.g., "assault_rifles")
+        private String awaitingCategoryRename; // Category folder name awaiting rename input (null if not awaiting)
         private final Map<String, LoadoutSlot> selectedSlots = new LinkedHashMap<>();
         private final Map<String, String> selectedAttachments = new LinkedHashMap<>(); // slotKey -> attachmentId
         private final long startTime;
@@ -464,6 +466,22 @@ public class LoadoutManager {
 
         public void removeAttachment(String slotKey) {
             selectedAttachments.remove(slotKey);
+        }
+
+        public String getCurrentWeaponCategory() {
+            return currentWeaponCategory;
+        }
+
+        public void setCurrentWeaponCategory(String currentWeaponCategory) {
+            this.currentWeaponCategory = currentWeaponCategory;
+        }
+
+        public String getAwaitingCategoryRename() {
+            return awaitingCategoryRename;
+        }
+
+        public void setAwaitingCategoryRename(String categoryFolderName) {
+            this.awaitingCategoryRename = categoryFolderName;
         }
 
         /**

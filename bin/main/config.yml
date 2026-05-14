@@ -30,6 +30,28 @@ ammo-multipliers:
   melee: 0
   default: 4
 
+# 武器カテゴリの表示名 (フォルダ名 → 表示名)
+# 管理者がGUI上で右クリック→チャット入力で変更することも可能
+category-display-names:
+  assault_rifles: "アサルトライフル"
+  sub_machine_guns: "サブマシンガン"
+  sniper_rifles: "スナイパーライフル"
+  marksman_rifles: "マークスマンライフル"
+  shotguns: "ショットガン"
+  light_machine_guns: "ライトマシンガン"
+  pistols: "ピストル"
+  rocket_launchers: "ロケットランチャー"
+  explosives: "爆発物"
+  consumables: "消耗品"
+  melee: "近接武器"
+  steklo: "ステクロ"
+  hid: "HID"
+
+# アタッチメント自動装着
+# true: 武器選択時にアタッチメントを自動装着した状態で配布
+# false: アタッチメントを別アイテムとして配布（従来の手動装着方式）
+auto-attach-enabled: true
+
 # Item amounts for consumables/throwables (items without ammo)
 # Used when weapon has no Reload section or no ammo definition
 # Can be set per-category or per-item

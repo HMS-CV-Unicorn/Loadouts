@@ -41,6 +41,12 @@ public class LoadoutsConfig {
     // Custom items
     private final Map<String, CustomItemConfig> customItems = new HashMap<>();
 
+    // Category display names (folder name -> display name)
+    private final Map<String, String> categoryDisplayNames = new LinkedHashMap<>();
+
+    // Auto-attach setting
+    private boolean autoAttachEnabled;
+
     // General settings
     private int maxLoadouts;
 
@@ -100,6 +106,18 @@ public class LoadoutsConfig {
         if (defaultAmmoMultiplier == 0) {
             defaultAmmoMultiplier = 4;
         }
+
+        // Category display names
+        categoryDisplayNames.clear();
+        ConfigurationSection categorySection = config.getConfigurationSection("category-display-names");
+        if (categorySection != null) {
+            for (String key : categorySection.getKeys(false)) {
+                categoryDisplayNames.put(key, categorySection.getString(key, key));
+            }
+        }
+
+        // Auto-attach
+        autoAttachEnabled = config.getBoolean("auto-attach-enabled", true);
 
         // Item amounts (for consumables without ammo)
         itemAmounts.clear();
@@ -303,6 +321,39 @@ public class LoadoutsConfig {
             return itemAmounts.get(category);
         }
         return defaultItemAmount;
+    }
+
+    /**
+     * Get display name for a weapon category (folder name).
+     * Returns the configured display name, or the folder name if not configured.
+     */
+    public String getCategoryDisplayName(String folderName) {
+        return categoryDisplayNames.getOrDefault(folderName, folderName);
+    }
+
+    /**
+     * Set a custom display name for a weapon category and save to config.
+     * Used by admin GUI right-click to rename categories.
+     */
+    public void setCategoryDisplayName(String folderName, String displayName) {
+        categoryDisplayNames.put(folderName, displayName);
+        // Persist to config.yml
+        plugin.getConfig().set("category-display-names." + folderName, displayName);
+        plugin.saveConfig();
+    }
+
+    /**
+     * Get all category display names
+     */
+    public Map<String, String> getCategoryDisplayNames() {
+        return Collections.unmodifiableMap(categoryDisplayNames);
+    }
+
+    /**
+     * Whether auto-attach is enabled
+     */
+    public boolean isAutoAttachEnabled() {
+        return autoAttachEnabled;
     }
 
     public String getCategoryMenuTitle() {

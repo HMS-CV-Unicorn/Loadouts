@@ -5,6 +5,8 @@ import com.saratoga.loadouts.LoadoutsConfig;
 import me.deecaad.weaponmechanics.WeaponMechanics;
 import me.deecaad.weaponmechanics.WeaponMechanicsAPI;
 import me.deecaad.weaponmechanics.weapon.info.InfoHandler;
+import com.cjcrafter.weaponmechanicsplus.WeaponMechanicsPlus;
+import com.cjcrafter.weaponmechanicsplus.weapon.modifiers.attachments.Attachment;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -400,6 +402,13 @@ public class WeaponMechanicsIntegration {
     }
 
     /**
+     * Get a list of weapons for a specific category.
+     */
+    public List<String> getWeaponsForCategory(String category) {
+        return categorizedWeapons.getOrDefault(category, new ArrayList<>());
+    }
+
+    /**
      * Get weapons allowed for a specific slot type (strict YAML-based matching)
      */
     public Map<String, List<String>> getWeaponsForSlot(String slotType) {
@@ -565,54 +574,88 @@ public class WeaponMechanicsIntegration {
         return allAttachments.size();
     }
 
-    /**
-     * Generate attachment ItemStack using WeaponMechanicsPlus API.
-     * Iterates through attachment configuration to find matching attachment by ID,
-     * then calls Attachment.generateItem() to get proper ItemStack.
-     */
-    @SuppressWarnings("unchecked")
-    public ItemStack generateAttachmentItem(String attachmentId) {
-        try {
-            // Get WeaponMechanicsPlus instance
-            Class<?> wmpClass = Class.forName("com.cjcrafter.weaponmechanicsplus.WeaponMechanicsPlus");
-            Object wmpInstance = wmpClass.getMethod("getInstance").invoke(null);
-
-            // Get attachment configuration (implements Iterable<Map.Entry<String, Object>>)
-            Object attachmentConfig = wmpClass.getMethod("getAttachmentConfiguration").invoke(wmpInstance);
-
-            // Configuration implements Iterable, so we can iterate through entries
-            // Each entry key is the attachment ID, value is the Attachment object
-            if (attachmentConfig instanceof Iterable<?> iterable) {
-                for (Object entryObj : iterable) {
-                    if (entryObj instanceof java.util.Map.Entry<?, ?> entry) {
-                        String key = (String) entry.getKey();
-                        Object value = entry.getValue();
-
-                        // Check if this is the attachment we're looking for
-                        if (attachmentId.equals(key) && value != null) {
-                            // Call Attachment.generateItem() to get proper ItemStack
-                            java.lang.reflect.Method generateItemMethod = value.getClass().getMethod("generateItem");
-                            Object result = generateItemMethod.invoke(value);
-
-                            if (result instanceof ItemStack itemStack) {
-                                plugin.getLogger().fine("Generated attachment via WMP API: " + attachmentId);
-                                return itemStack;
-                            }
-                        }
+    private Attachment getAttachmentConfig(String attachmentId) {
+        Object config = WeaponMechanicsPlus.getInstance().getAttachmentConfiguration();
+        if (config instanceof Iterable<?> iterable) {
+            for (Object entryObj : iterable) {
+                if (entryObj instanceof java.util.Map.Entry<?, ?> entry) {
+                    if (attachmentId.equals(entry.getKey())) {
+                        return (Attachment) entry.getValue();
                     }
                 }
             }
+        }
+        return null;
+    }
 
+    /**
+     * Generate attachment ItemStack using WeaponMechanicsPlus API.
+     */
+    public ItemStack generateAttachmentItem(String attachmentId) {
+        try {
+            Attachment attachment = getAttachmentConfig(attachmentId);
+            if (attachment != null) {
+                return attachment.generateItem();
+            }
             plugin.getLogger().warning("Attachment not found in WMP config: " + attachmentId);
-        } catch (ClassNotFoundException e) {
-            plugin.getLogger().warning("WeaponMechanicsPlus not found. Cannot generate attachments.");
-        } catch (NoSuchMethodException e) {
-            plugin.getLogger().warning("WMP API method not found: " + e.getMessage());
         } catch (Exception e) {
             plugin.getLogger().log(Level.WARNING, "Failed to generate attachment via WMP API: " + attachmentId, e);
         }
-
         return null;
+    }
+
+    /**
+     * Attach an attachment to a weapon directly using WMP API.
+     */
+    public boolean attachToWeapon(ItemStack weapon, String attachmentId) {
+        try {
+            Attachment attachment = getAttachmentConfig(attachmentId);
+            if (attachment != null) {
+                attachment.attach(weapon);
+                return true;
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to attach attachment: " + attachmentId, e);
+        }
+        return false;
+    }
+
+    /**
+     * Check if an attachment can be attached to a specific weapon title.
+     */
+    public boolean canAttachToWeapon(String attachmentId, String weaponTitle) {
+        try {
+            Attachment attachment = getAttachmentConfig(attachmentId);
+            if (attachment != null) {
+                // we pass a dummy ItemStack since Kotlin requires non-null, and we just want a theoretical check against the whitelist
+                // canAttach takes: (ItemStack item, String itemTitle, boolean isWeapon)
+                return attachment.canAttach(new ItemStack(org.bukkit.Material.STONE), weaponTitle, true);
+            }
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "Failed to check attachment compatibility: " + attachmentId, e);
+        }
+        return false;
+    }
+
+    /**
+     * Get a list of compatible attachment IDs for a specific weapon.
+     * Filters by allowed categories.
+     */
+    public List<String> getCompatibleAttachments(List<String> allowedCategories, String weaponTitle) {
+        List<String> compatible = new ArrayList<>();
+        
+        for (String category : allowedCategories) {
+            List<String> attachmentsInCategory = categorizedAttachments.get(category);
+            if (attachmentsInCategory != null) {
+                for (String attachmentId : attachmentsInCategory) {
+                    if (canAttachToWeapon(attachmentId, weaponTitle)) {
+                        compatible.add(attachmentId);
+                    }
+                }
+            }
+        }
+        
+        return compatible;
     }
 
     /**

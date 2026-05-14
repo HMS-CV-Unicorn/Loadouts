@@ -55,11 +55,23 @@ public class GuiManager implements Listener {
     // Max loadout slots
     private static final int MAX_SLOTS = 5;
 
+    // Tick counter for icon rotation
+    private int rotationTick = 0;
+
     public GuiManager(Loadouts plugin) {
         this.plugin = plugin;
         this.loadoutManager = plugin.getLoadoutManager();
         this.wmIntegration = plugin.getWmIntegration();
         this.config = plugin.getLoadoutsConfig();
+        
+        // Start icon rotation task (every 1 second)
+        new org.bukkit.scheduler.BukkitRunnable() {
+            @Override
+            public void run() {
+                rotationTick++;
+                updateCategoryMenus();
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
     }
 
     // ==================== Main Menu (Equipment Selection) ====================
@@ -426,9 +438,89 @@ public class GuiManager implements Listener {
     }
 
     /**
-     * Open weapon selection menu for a slot
+     * Update all currently open category menus for icon rotation
      */
-    public void openWeaponSelectMenu(Player player, String slotType) {
+    private void updateCategoryMenus() {
+        for (Map.Entry<UUID, GuiType> entry : openGuis.entrySet()) {
+            if (entry.getValue() == GuiType.WEAPON_CATEGORY_SELECT) {
+                Player player = Bukkit.getPlayer(entry.getKey());
+                if (player != null && player.getOpenInventory().getTopInventory() != null) {
+                    refreshCategoryMenuIcons(player, player.getOpenInventory().getTopInventory());
+                }
+            }
+        }
+    }
+
+    /**
+     * Get the rotating icon for a category
+     */
+    private ItemStack getCategoryRotationIcon(String category) {
+        List<String> weapons = wmIntegration.getWeaponsForCategory(category);
+        if (weapons == null || weapons.isEmpty()) {
+            return new ItemStack(Material.IRON_SWORD); // Fallback
+        }
+        
+        int index = rotationTick % weapons.size();
+        String weaponTitle = weapons.get(index);
+        
+        ItemStack icon = wmIntegration.generateWeapon(weaponTitle);
+        if (icon == null) {
+            return new ItemStack(Material.IRON_SWORD);
+        }
+        return icon;
+    }
+
+    /**
+     * Refresh the icons in an open category menu
+     */
+    private void refreshCategoryMenuIcons(Player player, Inventory inv) {
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session == null) return;
+        
+        String slotType = session.getCurrentSlotType();
+        LoadoutsConfig.SlotConfig slotConfig = config.getSlot(slotType);
+        if (slotConfig == null) return;
+        
+        List<String> allowedCategories = slotConfig.allowedCategories();
+        List<LoadoutsConfig.CustomItemConfig> customItems = config.getCustomItemsForSlot(slotType);
+        List<String> displayCategories = new ArrayList<>(allowedCategories);
+        if (!customItems.isEmpty() && !displayCategories.contains("custom_items")) {
+            displayCategories.add("custom_items");
+        }
+        
+        int slot = 0;
+        for (String category : displayCategories) {
+            if (slot >= 45) break;
+            
+            if (!category.equals("custom_items")) {
+                ItemStack icon = getCategoryRotationIcon(category);
+                ItemMeta meta = icon.getItemMeta();
+                String displayName = config.getCategoryDisplayName(category);
+                
+                Component displayComp = LegacyComponentSerializer.legacyAmpersand().deserialize(displayName).colorIfAbsent(NamedTextColor.GREEN);
+                meta.displayName(displayComp.decoration(TextDecoration.ITALIC, false));
+                
+                List<Component> lore = new ArrayList<>();
+                lore.add(Component.text("クリックして ", NamedTextColor.GRAY)
+                        .append(displayComp)
+                        .append(Component.text(" を表示", NamedTextColor.GRAY))
+                        .decoration(TextDecoration.ITALIC, false));
+                if (player.hasPermission("loadouts.admin")) {
+                    lore.add(Component.text("右クリック: 表示名を変更", NamedTextColor.RED).decoration(TextDecoration.ITALIC, false));
+                }
+                meta.lore(lore);
+                icon.setItemMeta(meta);
+                
+                inv.setItem(slot, icon);
+            }
+            slot++;
+        }
+    }
+
+    /**
+     * Open weapon category selection menu
+     */
+    public void openWeaponCategorySelectMenu(Player player, String slotType) {
         LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
         if (session == null) {
             player.sendMessage(config.getMessageComponent("invalid-usage"));
@@ -436,6 +528,61 @@ public class GuiManager implements Listener {
         }
 
         session.setCurrentSlotType(slotType);
+
+        LoadoutsConfig.SlotConfig slotConfig = config.getSlot(slotType);
+        if (slotConfig == null) return;
+
+        List<String> allowedCategories = slotConfig.allowedCategories();
+        
+        // Add "custom_items" if custom items exist for this slot
+        List<LoadoutsConfig.CustomItemConfig> customItems = config.getCustomItemsForSlot(slotType);
+        List<String> displayCategories = new ArrayList<>(allowedCategories);
+        if (!customItems.isEmpty() && !displayCategories.contains("custom_items")) {
+            displayCategories.add("custom_items");
+        }
+
+        String title = "カテゴリを選択";
+        Inventory inv = Bukkit.createInventory(null, 54, LegacyComponentSerializer.legacyAmpersand().deserialize(title));
+
+        int slot = 0;
+        for (String category : displayCategories) {
+            if (slot >= 45) break; // keep bottom row for navigation
+            
+            ItemStack icon;
+            if (category.equals("custom_items")) {
+                icon = new ItemStack(Material.CHEST);
+                ItemMeta meta = icon.getItemMeta();
+                meta.displayName(Component.text("カスタムアイテム", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                icon.setItemMeta(meta);
+                inv.setItem(slot, icon);
+            }
+            slot++;
+        }
+        
+        // Initial icon population
+        refreshCategoryMenuIcons(player, inv);
+
+        // Back button
+        inv.setItem(45, createNavigationItem(Material.ARROW, "&7戻る"));
+
+        // Fill empty slots
+        fillEmpty(inv, Material.GRAY_STAINED_GLASS_PANE);
+
+        player.openInventory(inv);
+        openGuis.put(player.getUniqueId(), GuiType.WEAPON_CATEGORY_SELECT);
+    }
+
+    /**
+     * Open weapon selection menu for a specific category
+     */
+    public void openWeaponSelectMenuForCategory(Player player, String category) {
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session == null) {
+            player.sendMessage(config.getMessageComponent("invalid-usage"));
+            return;
+        }
+
+        session.setCurrentWeaponCategory(category);
         session.setCurrentPage(0);
 
         updateWeaponSelectMenu(player, session);
@@ -446,26 +593,29 @@ public class GuiManager implements Listener {
      */
     private void updateWeaponSelectMenu(Player player, LoadoutManager.LoadoutEditSession session) {
         String slotType = session.getCurrentSlotType();
+        String category = session.getCurrentWeaponCategory();
         int page = session.getCurrentPage();
 
-        // Get weapons for this slot
-        List<String> weapons = wmIntegration.getFlatWeaponsForSlot(slotType);
-
-        // Debug log
-        plugin.getLogger().info("Weapon select for " + slotType + ": " + weapons.size() + " weapons found");
-
-        // Add custom items for this slot
-        List<LoadoutsConfig.CustomItemConfig> customItems = config.getCustomItemsForSlot(slotType);
+        List<String> weapons = new ArrayList<>();
+        List<LoadoutsConfig.CustomItemConfig> customItems = new ArrayList<>();
+        
+        if ("custom_items".equals(category)) {
+            customItems = config.getCustomItemsForSlot(slotType);
+        } else {
+            List<String> catWeapons = wmIntegration.getWeaponsForCategory(category);
+            if (catWeapons != null) {
+                weapons.addAll(catWeapons);
+            }
+        }
 
         int itemsPerPage = config.getItemsPerPage();
         int totalItems = weapons.size() + customItems.size();
         int maxPages = Math.max(1, (int) Math.ceil((double) totalItems / itemsPerPage));
 
-        LoadoutsConfig.SlotConfig slotConfig = config.getSlot(slotType);
-        String categoryName = slotConfig != null ? slotConfig.displayName() : slotType;
+        String categoryDisplayName = "custom_items".equals(category) ? "カスタムアイテム" : config.getCategoryDisplayName(category);
 
         String title = config.getWeaponSelectTitle()
-                .replace("%category%", categoryName)
+                .replace("%category%", categoryDisplayName)
                 .replace("%page%", String.valueOf(page + 1))
                 .replace("%max%", String.valueOf(maxPages));
 
@@ -584,8 +734,18 @@ public class GuiManager implements Listener {
             return;
         }
 
-        // Get attachments for this slot's categories
-        List<String> attachments = wmIntegration.getAttachmentsForCategories(slotConfig.categories());
+        // Get main weapon to check compatibility against (primary first, then secondary)
+        LoadoutSlot mainSlot = session.getSlot("primary");
+        if (mainSlot == null) {
+            mainSlot = session.getSlot("secondary");
+        }
+        
+        List<String> attachments;
+        if (mainSlot != null && mainSlot.isWmWeapon()) {
+            attachments = wmIntegration.getCompatibleAttachments(slotConfig.categories(), mainSlot.getWeaponTitle());
+        } else {
+            attachments = wmIntegration.getAttachmentsForCategories(slotConfig.categories());
+        }
 
         plugin.getLogger().info("Attachment select for " + slotKey + ": " + attachments.size() + " attachments found");
 
@@ -773,13 +933,35 @@ public class GuiManager implements Listener {
             }
         }
 
-        // Generate selected attachments
+        // Generate selected attachments and handle auto-attach
+        boolean autoAttach = config.isAutoAttachEnabled();
         for (Map.Entry<String, String> entry : session.getSelectedAttachments().entrySet()) {
             String attachmentId = entry.getValue();
-            ItemStack attachment = wmIntegration.generateAttachmentItem(attachmentId);
-            if (attachment != null) {
-                attachmentItems.add(attachment);
-                plugin.getLogger().info("Granting attachment: " + attachmentId);
+            
+            if (autoAttach) {
+                boolean attached = false;
+                for (ItemStack weapon : weaponItems) {
+                    String weaponTitle = wmIntegration.getWeaponTitle(weapon);
+                    if (weaponTitle != null && wmIntegration.canAttachToWeapon(attachmentId, weaponTitle)) {
+                        wmIntegration.attachToWeapon(weapon, attachmentId);
+                        attached = true;
+                        plugin.getLogger().info("Auto-attached " + attachmentId + " to " + weaponTitle);
+                        break;
+                    }
+                }
+                if (!attached) {
+                    // Fallback to giving item if it couldn't attach
+                    ItemStack attachment = wmIntegration.generateAttachmentItem(attachmentId);
+                    if (attachment != null) {
+                        attachmentItems.add(attachment);
+                    }
+                }
+            } else {
+                ItemStack attachment = wmIntegration.generateAttachmentItem(attachmentId);
+                if (attachment != null) {
+                    attachmentItems.add(attachment);
+                    plugin.getLogger().info("Granting attachment: " + attachmentId);
+                }
             }
         }
 
@@ -813,14 +995,39 @@ public class GuiManager implements Listener {
             }
         }
 
-        // Ammo goes in main inventory (slots 9+)
+        // Ammo goes in main inventory (slots 9-35)
+        int invSlot = 9;
         for (ItemStack ammo : ammoItems) {
-            player.getInventory().addItem(ammo);
+            boolean placed = false;
+            while (invSlot <= 35) {
+                if (player.getInventory().getItem(invSlot) == null) {
+                    player.getInventory().setItem(invSlot, ammo);
+                    invSlot++;
+                    placed = true;
+                    break;
+                }
+                invSlot++;
+            }
+            if (!placed) {
+                player.getInventory().addItem(ammo); // fallback
+            }
         }
 
-        // Attachments go in main inventory
+        // Attachments go in main inventory (slots 9-35)
         for (ItemStack attachment : attachmentItems) {
-            player.getInventory().addItem(attachment);
+            boolean placed = false;
+            while (invSlot <= 35) {
+                if (player.getInventory().getItem(invSlot) == null) {
+                    player.getInventory().setItem(invSlot, attachment);
+                    invSlot++;
+                    placed = true;
+                    break;
+                }
+                invSlot++;
+            }
+            if (!placed) {
+                player.getInventory().addItem(attachment); // fallback
+            }
         }
 
         // Update inventory
@@ -845,7 +1052,11 @@ public class GuiManager implements Listener {
 
         player.sendMessage(Component.text(summary.toString(), NamedTextColor.GRAY));
         player.sendMessage(Component.empty());
-        player.sendMessage(Component.text("アイテムを並べ替え・アタッチメント装着後：", NamedTextColor.YELLOW));
+        if (config.isAutoAttachEnabled()) {
+            player.sendMessage(Component.text("アイテムを好きなスロットに並べ替えた後：", NamedTextColor.YELLOW));
+        } else {
+            player.sendMessage(Component.text("アイテムを並べ替え・アタッチメントを手動装着後：", NamedTextColor.YELLOW));
+        }
         player.sendMessage(Component.text("  /loadout save", NamedTextColor.GREEN).decorate(TextDecoration.BOLD)
                 .append(Component.text(" → スロット " + editingSlot + " に保存", NamedTextColor.YELLOW)));
         player.sendMessage(Component.text("  /loadout cancel", NamedTextColor.RED)
@@ -880,6 +1091,7 @@ public class GuiManager implements Listener {
             case MAIN_MENU -> handleMainMenuClick(player, event.getSlot(), clicked, event.isRightClick());
             case SLOT_SELECT -> handleSlotSelectClick(player, event.getSlot(), clicked);
             case CATEGORY_MENU -> handleCategoryMenuClick(player, event.getSlot(), clicked);
+            case WEAPON_CATEGORY_SELECT -> handleWeaponCategorySelectClick(player, event.getSlot(), clicked, event.isRightClick());
             case WEAPON_SELECT -> handleWeaponSelectClick(player, event.getSlot(), clicked);
             case ATTACHMENT_SELECT -> handleAttachmentSelectClick(player, event.getSlot(), clicked);
         }
@@ -985,7 +1197,7 @@ public class GuiManager implements Listener {
         for (String slotKey : slots.keySet()) {
             if (i < slotPositions.length && slotPositions[i] == slot) {
                 isNavigating.add(player.getUniqueId());
-                openWeaponSelectMenu(player, slotKey);
+                openWeaponCategorySelectMenu(player, slotKey);
                 return;
             }
             i++;
@@ -1003,6 +1215,50 @@ public class GuiManager implements Listener {
                 return;
             }
             j++;
+        }
+    }
+
+    private void handleWeaponCategorySelectClick(Player player, int slot, ItemStack clicked, boolean isRightClick) {
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session == null) return;
+        
+        // Back button
+        if (slot == 45) {
+            isNavigating.add(player.getUniqueId());
+            openCategoryMenu(player, session.getEditingSlotNumber());
+            return;
+        }
+        
+        // Check if category clicked
+        if (slot >= 0 && slot < 45) {
+            String slotType = session.getCurrentSlotType();
+            LoadoutsConfig.SlotConfig slotConfig = config.getSlot(slotType);
+            if (slotConfig == null) return;
+            
+            List<String> allowedCategories = slotConfig.allowedCategories();
+            List<LoadoutsConfig.CustomItemConfig> customItems = config.getCustomItemsForSlot(slotType);
+            List<String> displayCategories = new ArrayList<>(allowedCategories);
+            if (!customItems.isEmpty() && !displayCategories.contains("custom_items")) {
+                displayCategories.add("custom_items");
+            }
+            
+            if (slot < displayCategories.size()) {
+                String category = displayCategories.get(slot);
+                
+                if (isRightClick && player.hasPermission("loadouts.admin") && !category.equals("custom_items")) {
+                    // Admin rename
+                    isNavigating.add(player.getUniqueId());
+                    session.setAwaitingCategoryRename(category);
+                    player.closeInventory();
+                    player.sendMessage(Component.text("=== カテゴリ名を入力してください ===", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+                    player.sendMessage(Component.text("対象: " + category, NamedTextColor.YELLOW));
+                    player.sendMessage(Component.text("カラーコード(&)使用可能。キャンセルするには 'cancel' と入力。", NamedTextColor.GRAY));
+                    return;
+                }
+                
+                isNavigating.add(player.getUniqueId());
+                openWeaponSelectMenuForCategory(player, category);
+            }
         }
     }
 
@@ -1053,6 +1309,20 @@ public class GuiManager implements Listener {
                 String slotType = session.getCurrentSlotType();
                 String category = wmIntegration.getWeaponCategory(weaponTitle);
                 int ammo = wmIntegration.calculateAmmo(weaponTitle);
+
+                LoadoutSlot existingSlot = session.getSlot(slotType);
+                boolean weaponChanged = existingSlot == null || !weaponTitle.equals(existingSlot.getWeaponTitle());
+
+                if (weaponChanged && (slotType.equals("primary") || slotType.equals("secondary"))) {
+                    // Reset all attachments
+                    Map<String, LoadoutsConfig.AttachmentSlotConfig> attachmentSlots = config.getAttachmentSlots();
+                    for (String attachSlotKey : attachmentSlots.keySet()) {
+                        session.removeAttachment(attachSlotKey);
+                    }
+                    if (existingSlot != null) {
+                        player.sendMessage(Component.text("武器を変更したため、アタッチメントの設定をリセットしました。", NamedTextColor.YELLOW));
+                    }
+                }
 
                 LoadoutSlot loadoutSlot = new LoadoutSlot(slotType, weaponTitle, category, ammo);
                 session.setSlot(slotType, loadoutSlot);
@@ -1251,6 +1521,39 @@ public class GuiManager implements Listener {
         UUID uuid = player.getUniqueId();
 
         if (!awaitingRename.contains(uuid)) {
+            // Check for category rename
+            LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(uuid);
+            if (session != null && session.getAwaitingCategoryRename() != null) {
+                event.setCancelled(true);
+                String category = session.getAwaitingCategoryRename();
+                session.setAwaitingCategoryRename(null);
+                
+                String message = net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(event.message());
+                
+                if (message.equalsIgnoreCase("cancel")) {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            player.sendMessage(Component.text("カテゴリ名変更をキャンセルしました。", NamedTextColor.YELLOW));
+                            openWeaponCategorySelectMenu(player, session.getCurrentSlotType());
+                        }
+                    });
+                    return;
+                }
+                
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        String coloredName = LegacyComponentSerializer.legacyAmpersand().serialize(LegacyComponentSerializer.legacyAmpersand().deserialize(message));
+                        config.setCategoryDisplayName(category, coloredName);
+                        
+                        Component resultComp = LegacyComponentSerializer.legacyAmpersand().deserialize(message);
+                        player.sendMessage(Component.text(category + " の表示名を \"", NamedTextColor.GREEN)
+                                .append(resultComp)
+                                .append(Component.text("\" に変更しました！", NamedTextColor.GREEN)));
+                        
+                        openWeaponCategorySelectMenu(player, session.getCurrentSlotType());
+                    }
+                });
+            }
             return;
         }
 
@@ -1717,6 +2020,7 @@ public class GuiManager implements Listener {
         MAIN_MENU,
         SLOT_SELECT,
         CATEGORY_MENU,
+        WEAPON_CATEGORY_SELECT,
         WEAPON_SELECT,
         ATTACHMENT_SELECT
     }
