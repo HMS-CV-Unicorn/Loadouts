@@ -47,6 +47,9 @@ public class LoadoutsConfig {
     // Auto-attach setting
     private boolean autoAttachEnabled;
 
+    // Save mode: true = direct (no edit mode), false = edit (give items first)
+    private boolean directSaveMode;
+
     // General settings
     private int maxLoadouts;
 
@@ -118,6 +121,9 @@ public class LoadoutsConfig {
 
         // Auto-attach
         autoAttachEnabled = config.getBoolean("auto-attach-enabled", true);
+
+        // Save mode
+        directSaveMode = "direct".equalsIgnoreCase(config.getString("save-mode", "edit"));
 
         // Item amounts (for consumables without ammo)
         itemAmounts.clear();
@@ -354,6 +360,13 @@ public class LoadoutsConfig {
      */
     public boolean isAutoAttachEnabled() {
         return autoAttachEnabled;
+    }
+
+    /**
+     * Whether direct save mode is enabled (no edit mode, save immediately from GUI)
+     */
+    public boolean isDirectSaveMode() {
+        return directSaveMode;
     }
 
     public String getCategoryMenuTitle() {

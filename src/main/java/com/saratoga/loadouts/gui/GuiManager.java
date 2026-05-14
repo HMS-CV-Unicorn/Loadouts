@@ -1065,6 +1065,135 @@ public class GuiManager implements Listener {
         // Keep session active for save command
     }
 
+    // ==================== Direct Save ====================
+
+    /**
+     * Directly save the loadout from the current session without entering edit mode.
+     * Used when save-mode is set to "direct" in config.
+     */
+    private void saveDirectly(Player player) {
+        LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(player.getUniqueId());
+        if (session == null || session.getSelectedSlots().isEmpty()) {
+            player.sendMessage(config.getMessageComponent("invalid-usage"));
+            return;
+        }
+
+        boolean hasPrimaryWeapon = session.hasSlot("primary");
+        boolean hasSecondaryWeapon = session.hasSlot("secondary");
+        if (!hasPrimaryWeapon && !hasSecondaryWeapon) {
+            player.sendMessage(Component.text("エラー: 最低でも1つの武器を選択してください。", NamedTextColor.RED));
+            player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
+
+        // Generate items (same logic as grantSelectedItems)
+        List<ItemStack> weaponItems = new ArrayList<>();
+        List<ItemStack> ammoItems = new ArrayList<>();
+        List<ItemStack> consumableItems = new ArrayList<>();
+        List<ItemStack> attachmentItems = new ArrayList<>();
+        List<ItemStack> otherItems = new ArrayList<>();
+
+        for (LoadoutSlot slot : session.getSelectedSlots().values()) {
+            if (slot.isWmWeapon()) {
+                String weaponTitle = slot.getWeaponTitle();
+                String category = wmIntegration.getWeaponCategory(weaponTitle);
+                if (wmIntegration.hasAmmoConfig(weaponTitle)) {
+                    ItemStack weapon = wmIntegration.generateWeapon(weaponTitle);
+                    if (weapon != null) {
+                        weaponItems.add(weapon);
+                        ammoItems.addAll(wmIntegration.generateAmmoItems(weaponTitle));
+                    }
+                } else {
+                    int amount = config.getItemAmount(weaponTitle, category);
+                    consumableItems.addAll(wmIntegration.generateConsumableItems(weaponTitle, amount));
+                }
+            } else {
+                LoadoutsConfig.CustomItemConfig customConfig = config.getCustomItems().get(slot.getWeaponTitle());
+                if (customConfig != null) {
+                    ItemStack customItem = new ItemStack(customConfig.material(), customConfig.amount());
+                    ItemMeta customMeta = customItem.getItemMeta();
+                    customMeta.displayName(customConfig.getDisplayNameComponent());
+                    customItem.setItemMeta(customMeta);
+                    otherItems.add(customItem);
+                }
+            }
+        }
+
+        // Handle attachments
+        boolean autoAttach = config.isAutoAttachEnabled();
+        for (Map.Entry<String, String> entry : session.getSelectedAttachments().entrySet()) {
+            String attachmentId = entry.getValue();
+            if (autoAttach) {
+                boolean attached = false;
+                for (ItemStack weapon : weaponItems) {
+                    String weaponTitle = wmIntegration.getWeaponTitle(weapon);
+                    if (weaponTitle != null && wmIntegration.canAttachToWeapon(attachmentId, weaponTitle)) {
+                        wmIntegration.attachToWeapon(weapon, attachmentId);
+                        attached = true;
+                        break;
+                    }
+                }
+                if (!attached) {
+                    ItemStack attachment = wmIntegration.generateAttachmentItem(attachmentId);
+                    if (attachment != null) attachmentItems.add(attachment);
+                }
+            } else {
+                ItemStack attachment = wmIntegration.generateAttachmentItem(attachmentId);
+                if (attachment != null) attachmentItems.add(attachment);
+            }
+        }
+
+        // Build inventory snapshot (36 slots: 0-8 hotbar, 9-35 main inventory)
+        ItemStack[] contents = new ItemStack[36];
+        int hotbarSlot = 0;
+        for (ItemStack item : weaponItems) {
+            if (hotbarSlot < 9) contents[hotbarSlot++] = item;
+        }
+        for (ItemStack item : consumableItems) {
+            if (hotbarSlot < 9) contents[hotbarSlot++] = item;
+        }
+        for (ItemStack item : otherItems) {
+            if (hotbarSlot < 9) contents[hotbarSlot++] = item;
+        }
+        int invSlot = 9;
+        for (ItemStack ammo : ammoItems) {
+            if (invSlot <= 35) contents[invSlot++] = ammo;
+        }
+        for (ItemStack attachment : attachmentItems) {
+            if (invSlot <= 35) contents[invSlot++] = attachment;
+        }
+
+        // Build loadout object
+        String slotNumber = String.valueOf(session.getEditingSlotNumber());
+        UUID targetUUID = session.isEditingGlobal() ? LoadoutManager.GLOBAL_UUID : player.getUniqueId();
+        Loadout existing = loadoutManager.getLoadout(targetUUID, slotNumber);
+        Loadout loadout = (existing != null) ? existing : new Loadout(targetUUID, slotNumber);
+
+        loadout.getSlots().clear();
+        loadout.getAttachments().clear();
+        for (LoadoutSlot slot : session.getSelectedSlots().values()) {
+            loadout.setSlot(slot.getSlotType(), slot);
+        }
+        for (Map.Entry<String, String> entry : session.getSelectedAttachments().entrySet()) {
+            loadout.setAttachment(entry.getKey(), entry.getValue());
+        }
+        loadout.setFinalItems(java.util.Arrays.asList(contents));
+
+        int editingSlot = session.getEditingSlotNumber();
+        player.closeInventory();
+        loadoutManager.endEditSession(player.getUniqueId());
+
+        loadoutManager.saveLoadout(loadout).thenRun(() ->
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    player.sendMessage(Component.text("【保存完了】", NamedTextColor.GOLD).decorate(TextDecoration.BOLD));
+                    player.sendMessage(Component.text("スロット " + editingSlot + " にロードアウトを保存しました。", NamedTextColor.GREEN));
+                    player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                }
+            })
+        );
+    }
+
     // ==================== Event Handlers ====================
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -1184,7 +1313,11 @@ public class GuiManager implements Listener {
         // Check if confirm button
         if (slot == 49) {
             if (!session.getSelectedSlots().isEmpty()) {
-                grantSelectedItems(player);
+                if (config.isDirectSaveMode()) {
+                    saveDirectly(player);
+                } else {
+                    grantSelectedItems(player);
+                }
             }
             return;
         }
@@ -1313,14 +1446,14 @@ public class GuiManager implements Listener {
                 LoadoutSlot existingSlot = session.getSlot(slotType);
                 boolean weaponChanged = existingSlot == null || !weaponTitle.equals(existingSlot.getWeaponTitle());
 
-                if (weaponChanged && (slotType.equals("primary") || slotType.equals("secondary"))) {
-                    // Reset all attachments
+                if (weaponChanged && slotType.equals("primary")) {
+                    // Reset all attachments only when primary weapon changes
                     Map<String, LoadoutsConfig.AttachmentSlotConfig> attachmentSlots = config.getAttachmentSlots();
                     for (String attachSlotKey : attachmentSlots.keySet()) {
                         session.removeAttachment(attachSlotKey);
                     }
                     if (existingSlot != null) {
-                        player.sendMessage(Component.text("武器を変更したため、アタッチメントの設定をリセットしました。", NamedTextColor.YELLOW));
+                        player.sendMessage(Component.text("メイン武器を変更したため、アタッチメントの設定をリセットしました。", NamedTextColor.YELLOW));
                     }
                 }
 
@@ -1407,8 +1540,17 @@ public class GuiManager implements Listener {
             if (slotConfig == null)
                 return;
 
-            // Get attachments for this slot
-            List<String> attachments = wmIntegration.getAttachmentsForCategories(slotConfig.categories());
+            // Get attachments using the same filter as updateAttachmentSelectMenu to keep indices aligned
+            LoadoutSlot mainSlotForClick = session.getSlot("primary");
+            if (mainSlotForClick == null) {
+                mainSlotForClick = session.getSlot("secondary");
+            }
+            List<String> attachments;
+            if (mainSlotForClick != null && mainSlotForClick.isWmWeapon()) {
+                attachments = wmIntegration.getCompatibleAttachments(slotConfig.categories(), mainSlotForClick.getWeaponTitle());
+            } else {
+                attachments = wmIntegration.getAttachmentsForCategories(slotConfig.categories());
+            }
 
             int page = session.getCurrentPage();
             int itemsPerPage = config.getItemsPerPage();
@@ -1459,11 +1601,11 @@ public class GuiManager implements Listener {
             return; // Skip auto-proceed, player is navigating to another menu
         }
 
-        // === ESC Auto-Proceed for Edit Menus ===
+        // === ESC Auto-Proceed for Edit Menus (edit mode only) ===
         // When closing category/weapon/attachment select menus, auto-proceed to save
-        // mode
-        // instead of canceling (unless explicit /loadout cancel is used)
-        if (closedGuiType != null && (closedGuiType == GuiType.CATEGORY_MENU
+        // mode instead of canceling (unless explicit /loadout cancel is used).
+        // In direct save mode this is skipped; the user must press the save button.
+        if (!config.isDirectSaveMode() && closedGuiType != null && (closedGuiType == GuiType.CATEGORY_MENU
                 || closedGuiType == GuiType.WEAPON_SELECT
                 || closedGuiType == GuiType.ATTACHMENT_SELECT)) {
             LoadoutManager.LoadoutEditSession session = loadoutManager.getEditSession(playerUUID);
@@ -1941,25 +2083,40 @@ public class GuiManager implements Listener {
         ItemMeta meta = item.getItemMeta();
 
         if (hasSelections) {
-            // === PROCEED BUTTON TEXT (editable) ===
-            meta.displayName(Component.text("保存モードへ移行", NamedTextColor.GREEN)
-                    .decorate(TextDecoration.BOLD)
-                    .decoration(TextDecoration.ITALIC, false));
+            if (config.isDirectSaveMode()) {
+                meta.displayName(Component.text("ロードアウトを保存", NamedTextColor.GREEN)
+                        .decorate(TextDecoration.BOLD)
+                        .decoration(TextDecoration.ITALIC, false));
+                List<Component> lore = new ArrayList<>();
+                lore.add(Component.text("選択済み: スロット " + session.getEditingSlotNumber(),
+                        NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.empty());
+                lore.add(Component.text("クリックして即時保存します。", NamedTextColor.GRAY)
+                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.text("アイテムの並べ替えは行われません。", NamedTextColor.GRAY)
+                        .decoration(TextDecoration.ITALIC, false));
+                meta.lore(lore);
+            } else {
+                // === PROCEED BUTTON TEXT (editable) ===
+                meta.displayName(Component.text("保存モードへ移行", NamedTextColor.GREEN)
+                        .decorate(TextDecoration.BOLD)
+                        .decoration(TextDecoration.ITALIC, false));
 
-            // === PROCEED BUTTON LORE (editable) ===
-            List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("選択済み: スロット " + session.getEditingSlotNumber(),
-                    NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.empty());
-            lore.add(Component.text("クリックしてアイテムを受け取ります。", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.text("インベントリでアイテム整理や", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.text("アタッチメントの装着を行ってください。", NamedTextColor.GRAY)
-                    .decoration(TextDecoration.ITALIC, false));
-            lore.add(Component.text("完了後、/loadout save で保存します。", NamedTextColor.AQUA)
-                    .decoration(TextDecoration.ITALIC, false));
-            meta.lore(lore);
+                // === PROCEED BUTTON LORE (editable) ===
+                List<Component> lore = new ArrayList<>();
+                lore.add(Component.text("選択済み: スロット " + session.getEditingSlotNumber(),
+                        NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.empty());
+                lore.add(Component.text("クリックしてアイテムを受け取ります。", NamedTextColor.GRAY)
+                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.text("インベントリでアイテム整理や", NamedTextColor.GRAY)
+                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.text("アタッチメントの装着を行ってください。", NamedTextColor.GRAY)
+                        .decoration(TextDecoration.ITALIC, false));
+                lore.add(Component.text("完了後、/loadout save で保存します。", NamedTextColor.AQUA)
+                        .decoration(TextDecoration.ITALIC, false));
+                meta.lore(lore);
+            }
         } else {
             meta.displayName(Component.text("アイテムを選択してください", NamedTextColor.RED)
                     .decoration(TextDecoration.ITALIC, false));

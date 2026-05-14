@@ -52,6 +52,11 @@ category-display-names:
 # false: アタッチメントを別アイテムとして配布（従来の手動装着方式）
 auto-attach-enabled: true
 
+# 保存モード
+# "edit"  : アイテムを配布 → 並べ替え・手動装着後に /loadout save で保存
+# "direct": GUIの保存ボタンを押すだけで即時保存（編集モードなし）
+save-mode: "edit"
+
 # Item amounts for consumables/throwables (items without ammo)
 # Used when weapon has no Reload section or no ammo definition
 # Can be set per-category or per-item
